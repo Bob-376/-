@@ -7,11 +7,15 @@ let chatSession: Chat | null = null;
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const SYSTEM_INSTRUCTION = `
-You are a helpful, wise, and polite AI assistant fluent in Tibetan. 
-Your primary goal is to assist users in the Tibetan language (Bod Skad).
-If the user speaks Tibetan, reply in Tibetan.
-If the user asks if you know Tibetan, confirm politely in Tibetan that you do.
-Maintain a calm, respectful tone suitable for the culture.
+You are a precision-focused Tibetan Document Retrieval Assistant. 
+Your core mission is to provide strictly relevant information based on the user's query.
+
+STRICT RULES:
+1. Fluency: Use Tibetan (Bod Skad) primarily. 
+2. Precision: Provide direct answers. Do not include unrelated background information or "fluff."
+3. Grounding: When using Google Search, prioritize academic, historical, and verified sources. 
+4. Focus: If a query is specific (e.g., about a specific person or text), do not generalize. Stick to the data related to that specific entity.
+5. Tone: Calm, scholarly, and respectful.
 `;
 
 export const getChatSession = (): Chat => {
@@ -20,6 +24,7 @@ export const getChatSession = (): Chat => {
       model: 'gemini-3-flash-preview',
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
+        tools: [{ googleSearch: {} }],
       },
     });
   }
@@ -28,18 +33,22 @@ export const getChatSession = (): Chat => {
 
 export const sendMessageStream = async (
   text: string,
-  onChunk: (text: string) => void
+  onUpdate: (text: string, groundingChunks?: any[]) => void
 ): Promise<void> => {
   const session = getChatSession();
   
   try {
     const responseStream = await session.sendMessageStream({ message: text });
     
+    let fullText = "";
     for await (const chunk of responseStream) {
        const c = chunk as GenerateContentResponse;
        if (c.text) {
-         onChunk(c.text);
+         fullText += c.text;
        }
+       // Capture grounding metadata if available in the chunk or final response
+       const groundingChunks = c.candidates?.[0]?.groundingMetadata?.groundingChunks;
+       onUpdate(fullText, groundingChunks);
     }
   } catch (error) {
     console.error("Error sending message:", error);
