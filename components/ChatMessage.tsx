@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Message } from '../types';
-import { Bot, User, Hash, Copy, Check, Clock, Pencil, X, Save, CornerDownLeft, ExternalLink, Library } from 'lucide-react';
+import { Bot, User, Hash, Copy, Check, Clock, Pencil, X, Save, CornerDownLeft, ExternalLink, Library, History } from 'lucide-react';
 
 interface ChatMessageProps {
   message: Message;
@@ -11,31 +11,57 @@ interface ChatMessageProps {
   highlightQuery?: string;
 }
 
-const EMOJI_OPTIONS = ['👍', '❤️', '🤔', '🙏', '🔥'];
-
 const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEditSubmit, onReaction, disabled, highlightQuery }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [editText, setEditText] = useState(message.text);
+  const [historyNavIndex, setHistoryNavIndex] = useState<number | null>(null);
+  const [initialEditText, setInitialEditText] = useState(message.text);
+  
   const editInputRef = useRef<HTMLTextAreaElement>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
   
   const isUser = message.role === 'user';
   const charCount = message.text.length;
+  const hasHistory = message.history && message.history.length > 0;
 
-  useEffect(() => {
-    if (isEditing && editInputRef.current) {
+  // Auto-resize logic for the edit textarea
+  const adjustTextareaHeight = () => {
+    if (editInputRef.current) {
       const textarea = editInputRef.current;
       textarea.style.height = 'auto';
-      textarea.style.height = `${textarea.scrollHeight}px`;
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 250)}px`;
+    }
+  };
+
+  useEffect(() => {
+    if (isEditing) {
+      adjustTextareaHeight();
     }
   }, [editText, isEditing]);
 
   useEffect(() => {
     if (isEditing && editInputRef.current) {
       editInputRef.current.focus();
+      // Position cursor at end of text
       editInputRef.current.setSelectionRange(editInputRef.current.value.length, editInputRef.current.value.length);
+      adjustTextareaHeight();
     }
   }, [isEditing]);
+
+  // Handle clicking outside history dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (historyRef.current && !historyRef.current.contains(event.target as Node)) {
+        setShowHistory(false);
+      }
+    };
+    if (showHistory) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showHistory]);
 
   const handleCopy = async () => {
     try {
@@ -47,6 +73,41 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEditSubmit, onReac
     }
   };
 
+  const handleEditStart = () => {
+    setEditText(message.text);
+    setInitialEditText(message.text);
+    setHistoryNavIndex(null);
+    setIsEditing(true);
+  };
+
+  const navigateHistory = (direction: 'up' | 'down') => {
+    if (!message.history || message.history.length === 0) return;
+
+    // History is [oldest, ..., most_recent]
+    const historyPool = [...message.history];
+    let nextIndex: number | null = historyNavIndex;
+
+    if (direction === 'up') {
+      // Go back in time (towards index 0)
+      if (nextIndex === null) {
+        nextIndex = historyPool.length - 1;
+      } else if (nextIndex > 0) {
+        nextIndex -= 1;
+      }
+    } else {
+      // Go forward in time (towards current text)
+      if (nextIndex === null) return;
+      if (nextIndex < historyPool.length - 1) {
+        nextIndex += 1;
+      } else {
+        nextIndex = null; // Back to initial
+      }
+    }
+
+    setHistoryNavIndex(nextIndex);
+    setEditText(nextIndex === null ? initialEditText : historyPool[nextIndex]);
+  };
+
   const isThinking = !isUser && message.isStreaming && message.text === '';
   const hasReactions = message.reactions && Object.values(message.reactions).some(count => (count as number) > 0);
 
@@ -55,7 +116,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEditSubmit, onReac
     const trimmedQuery = query.trim();
     if (!trimmedQuery) return text;
 
-    // Escape regex special characters and create tokens
     const tokens = trimmedQuery.split(/\s+/).filter(t => t.length > 0);
     const escapedTokens = tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     const regex = new RegExp(`(${escapedTokens.join('|')})`, 'gi');
@@ -97,6 +157,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEditSubmit, onReac
             ${isUser 
               ? 'bg-white text-himalaya-dark rounded-tr-none border border-gray-200' 
               : 'bg-himalaya-red/10 text-himalaya-dark rounded-tl-none border border-himalaya-red/20'}
+            ${isEditing ? 'p-1' : ''}
           `}>
             {!isEditing && (
               <div className={`
@@ -111,9 +172,35 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEditSubmit, onReac
                     {copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
                   </button>
                 )}
+                {isUser && hasHistory && (
+                  <div className="relative" ref={historyRef}>
+                    <button
+                      onClick={() => setShowHistory(!showHistory)}
+                      className="p-1.5 rounded-md hover:bg-gray-100/50 text-gray-400 hover:text-himalaya-red"
+                      title="Edit History"
+                    >
+                      <History size={14} />
+                    </button>
+                    {showHistory && (
+                      <div className="absolute top-full right-0 mt-1 w-64 bg-white border border-gray-200 rounded-xl shadow-xl z-30 p-2 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-2 px-2 py-1 border-b border-gray-100 mb-1">
+                          <History size={12} className="text-himalaya-red" />
+                          <span className="text-[10px] font-bold uppercase text-himalaya-slate tracking-tighter">སྔོན་གྱི་ཡིག་རིགས། (Previous Versions)</span>
+                        </div>
+                        <div className="max-h-48 overflow-y-auto space-y-2 p-1">
+                          {message.history?.slice().reverse().map((version, i) => (
+                            <div key={i} className="p-2 bg-himalaya-cream/30 rounded-lg border border-himalaya-gold/10 text-xs text-himalaya-slate/80 italic">
+                              {version}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {isUser && onEditSubmit && !disabled && (
                   <button
-                    onClick={() => setIsEditing(true)}
+                    onClick={handleEditStart}
                     className="p-1.5 rounded-md hover:bg-gray-100/50 text-gray-400 hover:text-himalaya-red"
                   >
                     <Pencil size={14} />
@@ -129,23 +216,59 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEditSubmit, onReac
                 <div className="w-2 h-2 bg-himalaya-red rounded-full animate-typing-dot delay-400"></div>
               </div>
             ) : isEditing ? (
-              <div className="flex flex-col gap-2">
-                <textarea
-                  ref={editInputRef}
-                  className="w-full bg-himalaya-cream/30 border border-himalaya-gold/30 rounded-lg p-2 text-base md:text-lg resize-none focus:outline-none"
-                  value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      onEditSubmit?.(editText, message.id);
-                      setIsEditing(false);
-                    }
-                  }}
-                />
-                <div className="flex justify-end gap-2">
-                  <button onClick={() => setIsEditing(false)} className="text-xs text-gray-400">Cancel</button>
-                  <button onClick={() => { onEditSubmit?.(editText, message.id); setIsEditing(false); }} className="text-xs text-himalaya-red font-bold">Save</button>
+              <div className="flex flex-col gap-2 p-1">
+                <div className="relative">
+                  <textarea
+                    ref={editInputRef}
+                    className="w-full bg-himalaya-cream/50 border-2 border-gray-300 focus:border-himalaya-red focus:ring-1 focus:ring-himalaya-red rounded-xl p-3 text-base md:text-lg resize-none shadow-inner transition-all duration-200 min-h-[50px]"
+                    placeholder="བཅོས་སྒྲིག་བྱེད་བཞིན་པ། (Editing message...)"
+                    value={editText}
+                    onChange={(e) => {
+                      setEditText(e.target.value);
+                      setHistoryNavIndex(null); // Reset navigation if user starts manual typing
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        onEditSubmit?.(editText, message.id);
+                        setIsEditing(false);
+                      } else if (e.key === 'Escape') {
+                        setIsEditing(false);
+                      } else if (e.ctrlKey && e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        navigateHistory('up');
+                      } else if (e.ctrlKey && e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        navigateHistory('down');
+                      }
+                    }}
+                    rows={1}
+                  />
+                  {historyNavIndex !== null && (
+                    <div className="absolute top-1 right-3 flex items-center gap-1 bg-himalaya-gold/20 text-[9px] font-bold text-himalaya-gold px-2 py-0.5 rounded-full border border-himalaya-gold/30 pointer-events-none animate-in fade-in duration-200">
+                      <History size={10} />
+                      VERSION {historyNavIndex + 1}/{message.history?.length}
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-between items-center px-1">
+                  <div className="text-[9px] text-himalaya-slate/40 font-bold uppercase tracking-widest flex items-center gap-2">
+                    <span className="flex items-center gap-1"><kbd className="bg-gray-100 px-1 rounded border">Ctrl</kbd>+<kbd className="bg-gray-100 px-1 rounded border">↑</kbd>/<kbd className="bg-gray-100 px-1 rounded border">↓</kbd> History</span>
+                  </div>
+                  <div className="flex justify-end gap-1">
+                    <button 
+                      onClick={() => setIsEditing(false)} 
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-himalaya-slate hover:text-himalaya-red transition-colors"
+                    >
+                      <X size={14} /> ཕྱིར་འཐེན། (Cancel)
+                    </button>
+                    <button 
+                      onClick={() => { onEditSubmit?.(editText, message.id); setIsEditing(false); }} 
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-himalaya-red text-white rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-red-900 transition-all shadow-sm"
+                    >
+                      <Save size={14} /> ཉར་ཚགས། (Save)
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -158,9 +281,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEditSubmit, onReac
             )}
 
             {!isEditing && !isThinking && (
-              <div className={`mt-3 flex items-center gap-1 text-[10px] opacity-75 font-sans ${isUser ? 'justify-end' : 'justify-start'}`}>
-                 <Hash size={10} />
-                 <span>{charCount} ཡིག་འབྲུ།</span>
+              <div className={`mt-3 flex items-center gap-2 text-[10px] opacity-75 font-sans ${isUser ? 'justify-end' : 'justify-start'}`}>
+                 {hasHistory && <span className="flex items-center gap-0.5 text-himalaya-red font-bold"><History size={10} /> བཅོས་ཟིན། (Edited)</span>}
+                 <div className="flex items-center gap-1">
+                   <Hash size={10} />
+                   <span>{charCount} ཡིག་འབྲུ།</span>
+                 </div>
               </div>
             )}
           </div>

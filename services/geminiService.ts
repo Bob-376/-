@@ -57,6 +57,33 @@ export const sendMessageStream = async (
   }
 };
 
+export const extractTextFromImage = async (base64Image: string, mimeType: string): Promise<string> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: [
+        {
+          parts: [
+            {
+              inlineData: {
+                data: base64Image,
+                mimeType: mimeType
+              }
+            },
+            {
+              text: "Please accurately transcribe all the text found in this image. Focus especially on any Tibetan (Uchen or Umê script), Chinese, or English text. Return only the transcribed text without any preamble or commentary."
+            }
+          ]
+        }
+      ]
+    });
+    return response.text || "";
+  } catch (error) {
+    console.error("Error extracting text from image:", error);
+    throw error;
+  }
+};
+
 export const resetChat = () => {
   chatSession = null;
 };

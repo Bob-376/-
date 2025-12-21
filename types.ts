@@ -10,6 +10,7 @@ export interface Message {
   id: string;
   role: 'user' | 'model';
   text: string;
+  history?: string[]; // Array of previous message texts
   isStreaming?: boolean;
   timestamp: number;
   reactions?: Record<string, number>;

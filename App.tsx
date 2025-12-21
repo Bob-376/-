@@ -3,12 +3,18 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Send, Sparkles, AlertCircle, X, Search, Filter, ExternalLink, 
   HelpCircle, ChevronUp, ChevronDown, Languages, FileEdit, 
-  Maximize, Wand2, Briefcase, ChevronRight
+  Maximize, Wand2, Briefcase, ChevronRight, Globe, ImagePlus, Loader2, Scan, Check
 } from 'lucide-react';
 import Header from './components/Header';
 import ChatMessage from './components/ChatMessage';
 import { Message } from './types';
-import { sendMessageStream, resetChat } from './services/geminiService';
+import { sendMessageStream, resetChat, extractTextFromImage } from './services/geminiService';
+
+const TRANSLATION_LANGS = [
+  { id: 'Tibetan', label: 'བོད་ཡིག', sub: 'Tibetan' },
+  { id: 'Chinese', label: '中文', sub: 'Chinese' },
+  { id: 'English', label: 'English', sub: 'English' }
+];
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
@@ -24,27 +30,36 @@ const App: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isFuzzySearch, setIsFuzzySearch] = useState(false);
+  const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Dropdown states
+  // Image/OCR State
+  const [pendingImage, setPendingImage] = useState<{data: string, mime: string} | null>(null);
+  const [isImageProcessing, setIsImageProcessing] = useState(false);
+  
+  // UI State
   const [showEditMenu, setShowEditMenu] = useState(false);
   const [showTranslateMenu, setShowTranslateMenu] = useState(false);
+  const [isSearchActive, setIsSearchActive] = useState(false);
+  const [activeTranslateLang, setActiveTranslateLang] = useState<string | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const mainContentRef = useRef<HTMLElement>(null);
 
   const scrollToBottom = () => {
-    if (!searchQuery) {
+    if (!searchQuery && !selectedSource) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, searchQuery]);
+  }, [messages, searchQuery, selectedSource]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -52,7 +67,25 @@ const App: React.FC = () => {
 
   useEffect(() => {
     setCurrentMatchIndex(0);
-  }, [searchQuery, isFuzzySearch]);
+  }, [searchQuery, isFuzzySearch, selectedSource]);
+
+  useEffect(() => {
+    if (isSearchActive) {
+      searchInputRef.current?.focus();
+    } else {
+      setSelectedSource(null);
+    }
+  }, [isSearchActive]);
+
+  // Detect if current input text is a translation request and update activeTranslateLang
+  useEffect(() => {
+    const translateMatch = inputText.match(/Please translate the following text into (Tibetan|Chinese|English)\./);
+    if (translateMatch) {
+      setActiveTranslateLang(translateMatch[1]);
+    } else if (inputText.trim() === '') {
+      setActiveTranslateLang(null);
+    }
+  }, [inputText]);
 
   const handleSendMessage = async (textOverride?: string) => {
     const userText = (textOverride || inputText).trim();
@@ -60,6 +93,9 @@ const App: React.FC = () => {
 
     if (!textOverride) setInputText('');
     setSearchQuery(''); 
+    setSelectedSource(null);
+    setIsSearchActive(false);
+    setActiveTranslateLang(null);
     setError(null); 
     
     if (!textOverride) {
@@ -110,9 +146,22 @@ const App: React.FC = () => {
   };
 
   const applyProjectTool = (type: 'polish' | 'expand' | 'correct' | 'translate', option?: string) => {
-    const content = inputText.trim();
+    let currentContent = inputText;
     let prefix = "";
     
+    // If it's a translation change and we already have a translation prefix, replace it
+    const translationRegex = /^Please translate the following text into (Tibetan|Chinese|English)\. Focus on capturing the precise semantic meaning: \n\n/;
+    const isAlreadyTranslation = translationRegex.test(currentContent);
+
+    if (type === 'translate' && isAlreadyTranslation) {
+      prefix = `Please translate the following text into ${option || 'Tibetan'}. Focus on capturing the precise semantic meaning: \n\n`;
+      setInputText(currentContent.replace(translationRegex, prefix));
+      setActiveTranslateLang(option || 'Tibetan');
+      setShowTranslateMenu(false);
+      return;
+    }
+
+    // Standard prefixing logic
     switch (type) {
       case 'polish':
         prefix = "Please polish and refine the following text to make it more scholarly, elegant, and professional. Ensure the cultural nuances remain intact: ";
@@ -125,10 +174,13 @@ const App: React.FC = () => {
         break;
       case 'translate':
         prefix = `Please translate the following text into ${option || 'Tibetan'}. Focus on capturing the precise semantic meaning: `;
+        setActiveTranslateLang(option || 'Tibetan');
         break;
     }
 
-    const fullPrompt = `${prefix}\n\n${content || '[Paste text here]'}`;
+    const cleanedContent = currentContent.replace(/^(Please polish|Please expand|Please correct|Please translate).*\n\n/, '');
+    const fullPrompt = `${prefix}\n\n${cleanedContent || '[Paste text here]'}`;
+    
     setInputText(fullPrompt);
     setShowEditMenu(false);
     setShowTranslateMenu(false);
@@ -139,8 +191,18 @@ const App: React.FC = () => {
     if (isLoading) return;
     const msgIndex = messages.findIndex(m => m.id === id);
     if (msgIndex === -1) return;
+
     const truncated = messages.slice(0, msgIndex);
-    const updatedUserMsg: Message = { ...messages[msgIndex], text, timestamp: Date.now() };
+    const existingMsg = messages[msgIndex];
+    
+    // Create new message with updated text and history
+    const updatedUserMsg: Message = { 
+      ...existingMsg, 
+      text, 
+      history: [...(existingMsg.history || []), existingMsg.text],
+      timestamp: Date.now() 
+    };
+    
     setMessages([...truncated, updatedUserMsg]);
     handleSendMessage(text);
   };
@@ -160,6 +222,10 @@ const App: React.FC = () => {
     resetChat();
     setError(null);
     setSearchQuery('');
+    setSelectedSource(null);
+    setIsSearchActive(false);
+    setPendingImage(null);
+    setActiveTranslateLang(null);
     setMessages([
       {
         id: Date.now().toString(),
@@ -172,29 +238,99 @@ const App: React.FC = () => {
     ]);
   };
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64Data = (reader.result as string).split(',')[1];
+      setPendingImage({ data: base64Data, mime: file.type });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleScanImage = async () => {
+    if (!pendingImage) return;
+    
+    setIsImageProcessing(true);
+    setError(null);
+    
+    try {
+      const extractedText = await extractTextFromImage(pendingImage.data, pendingImage.mime);
+      if (extractedText.trim()) {
+        setInputText(extractedText);
+        setPendingImage(null);
+      } else {
+        setError("པར་རིས་ལས་ཡིག་རིགས་རྙེད་མ་སོང་། (No text found in image)");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError("པར་རིས་ངོས་འཛིན་བྱེད་སྐབས་ནོར་འཁྲུལ་བྱུང་སོང་། (Error processing image)");
+    } finally {
+      setIsImageProcessing(false);
+      inputRef.current?.focus();
+    }
+  };
+
   const filteredMessages = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return messages;
-
-    const matchingIndices = new Set<number>();
-    messages.forEach((msg, idx) => {
-      const text = msg.text.toLowerCase();
-      let isMatch = false;
-      if (isFuzzySearch) {
-        const tokens = query.split(/\s+/).filter(t => t.length > 0);
-        isMatch = tokens.every(token => text.includes(token));
-      } else {
-        isMatch = text.includes(query);
+    
+    return messages.filter((msg, idx) => {
+      let isMatch = true;
+      if (query) {
+        const text = msg.text.toLowerCase();
+        if (isFuzzySearch) {
+          const tokens = query.split(/\s+/).filter(t => t.length > 0);
+          isMatch = tokens.every(token => text.includes(token));
+        } else {
+          isMatch = text.includes(query);
+        }
       }
 
-      if (isMatch) {
-        matchingIndices.add(idx);
-        if (msg.role === 'model' && idx > 0) matchingIndices.add(idx - 1);
-        if (msg.role === 'user' && idx < messages.length - 1) matchingIndices.add(idx + 1);
+      if (isMatch && selectedSource) {
+        isMatch = msg.groundingChunks?.some(chunk => {
+          if (!chunk.web) return false;
+          try {
+            return new URL(chunk.web.uri).hostname === selectedSource;
+          } catch {
+            return false;
+          }
+        }) || false;
+      }
+
+      return isMatch;
+    });
+  }, [messages, searchQuery, isFuzzySearch, selectedSource]);
+
+  const availableSources = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const sourceSet = new Set<string>();
+    
+    messages.forEach(msg => {
+      let matchesText = true;
+      if (query) {
+        const text = msg.text.toLowerCase();
+        if (isFuzzySearch) {
+          const tokens = query.split(/\s+/).filter(t => t.length > 0);
+          matchesText = tokens.every(token => text.includes(token));
+        } else {
+          matchesText = text.includes(query);
+        }
+      }
+
+      if (matchesText && msg.groundingChunks) {
+        msg.groundingChunks.forEach(chunk => {
+          if (chunk.web) {
+            try {
+              sourceSet.add(new URL(chunk.web.uri).hostname);
+            } catch {}
+          }
+        });
       }
     });
 
-    return Array.from(matchingIndices).sort((a, b) => a - b).map(idx => messages[idx]);
+    return Array.from(sourceSet).sort();
   }, [messages, searchQuery, isFuzzySearch]);
 
   const navigateSearch = (direction: 'prev' | 'next') => {
@@ -213,54 +349,7 @@ const App: React.FC = () => {
     <div className="flex flex-col h-screen bg-himalaya-cream text-himalaya-dark font-tibetan overflow-hidden">
       <Header onReset={handleReset} />
 
-      {/* Search Bar with Navigation */}
-      <div className="bg-white/60 backdrop-blur-sm border-b border-himalaya-gold/20 p-2 sticky top-[72px] z-[9] shadow-sm">
-        <div className="max-w-3xl mx-auto flex flex-col md:flex-row items-stretch md:items-center gap-2">
-          <div className="relative flex-1 group">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-himalaya-slate/50 group-focus-within:text-himalaya-red transition-colors duration-200">
-              <Search size={18} />
-            </div>
-            <input
-              type="text"
-              className="w-full bg-himalaya-cream/30 border border-gray-200 focus:border-himalaya-red focus:ring-1 focus:ring-himalaya-red rounded-full py-2 pl-10 pr-10 text-sm md:text-base transition-all duration-200 outline-none"
-              placeholder="འཚོལ་བཤེར། | 搜索 | Search messages..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-himalaya-red">
-                <X size={16} />
-              </button>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-2">
-            {searchQuery && filteredMessages.length > 0 && (
-              <div className="flex items-center bg-white border border-gray-200 rounded-full px-1 py-1 shadow-sm">
-                <span className="text-[10px] md:text-xs font-sans font-bold text-himalaya-slate px-3 min-w-[50px] text-center border-r border-gray-100">
-                  {currentMatchIndex + 1} / {filteredMessages.length}
-                </span>
-                <button onClick={() => navigateSearch('prev')} disabled={currentMatchIndex === 0} className="p-1.5 rounded-full hover:bg-himalaya-cream disabled:opacity-30">
-                  <ChevronUp size={16} />
-                </button>
-                <button onClick={() => navigateSearch('next')} disabled={currentMatchIndex === filteredMessages.length - 1} className="p-1.5 rounded-full hover:bg-himalaya-cream disabled:opacity-30">
-                  <ChevronDown size={16} />
-                </button>
-              </div>
-            )}
-
-            <button
-              onClick={() => setIsFuzzySearch(!isFuzzySearch)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-full border transition-all duration-300 text-xs font-bold uppercase tracking-wider ${isFuzzySearch ? 'bg-himalaya-red text-white border-himalaya-red shadow-md' : 'bg-white text-himalaya-slate border-gray-200 hover:border-himalaya-gold'}`}
-            >
-              <Filter size={14} />
-              <span className="hidden md:inline">{isFuzzySearch ? 'Fuzzy' : 'Exact'}</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <main ref={mainContentRef} className="flex-1 overflow-y-auto p-4 md:p-6 pb-48 w-full max-w-3xl mx-auto scroll-smooth">
+      <main ref={mainContentRef} className="flex-1 overflow-y-auto p-4 md:p-6 pb-72 w-full max-w-3xl mx-auto scroll-smooth">
         {error && (
           <div className="mb-6 animate-in fade-in slide-in-from-top-4 duration-300">
             <div className="bg-red-50 border-l-4 border-himalaya-red p-4 rounded-r-xl shadow-md flex items-start gap-4 relative">
@@ -269,9 +358,6 @@ const App: React.FC = () => {
                 <p className="text-sm md:text-base text-himalaya-red font-medium leading-relaxed mb-3">{error}</p>
                 <div className="flex flex-wrap items-center gap-4">
                   <button onClick={() => handleSendMessage()} className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-himalaya-red bg-himalaya-red/10 hover:bg-himalaya-red hover:text-white px-3 py-1.5 rounded-lg transition-all">ཕྱིར་མངགས། (Retry)</button>
-                  <a href="https://ai.google.dev/gemini-api/docs/troubleshooting" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-himalaya-slate border border-gray-200 bg-white px-3 py-1.5 rounded-lg">
-                    <HelpCircle size={14} /> རོགས་རམ། (Help & FAQ) <ExternalLink size={12} />
-                  </a>
                 </div>
               </div>
               <button onClick={() => setError(null)} className="absolute top-2 right-2 p-1 text-himalaya-red/50 hover:text-himalaya-red"><X size={18} /></button>
@@ -283,7 +369,7 @@ const App: React.FC = () => {
            {filteredMessages.length === 0 ? (
              <div className="flex flex-col items-center justify-center h-64 text-himalaya-slate/40">
                <Sparkles className="w-12 h-12 mb-2 opacity-20" />
-               <p className="font-tibetan text-lg">{searchQuery ? 'འཚོལ་ཐབས་མ་རྙེད།' : 'འགོ་འཛུགས་རོགས།'}</p>
+               <p className="font-tibetan text-lg">{searchQuery || selectedSource ? 'འཚོལ་ཐབས་མ་རྙེད། (No results found)' : 'འགོ་འཛུགས་རོགས། (Start a conversation)'}</p>
              </div>
            ) : (
              filteredMessages.map((msg, idx) => (
@@ -300,56 +386,46 @@ const App: React.FC = () => {
       <div className="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-himalaya-gold/30 p-4 shadow-2xl z-20">
         <div className="max-w-3xl mx-auto space-y-3">
           
-          {/* Consolidated Project Tools Toolbar */}
+          {/* Project Tools Toolbar */}
           <div className="flex flex-wrap items-center gap-2 pb-1">
             <div className="flex items-center gap-1.5 px-2 py-1 bg-himalaya-red/5 rounded-lg border border-himalaya-red/10 mr-1">
               <Briefcase size={14} className="text-himalaya-red" />
               <span className="text-[10px] font-bold uppercase tracking-tighter text-himalaya-red whitespace-nowrap">ལས་གཞིའི་ལག་ཆ། | 项目工具</span>
             </div>
             
-            {/* Editing Tools Dropdown */}
+            {/* Editing Tools */}
             <div className="relative">
               <button 
-                onClick={() => { setShowEditMenu(!showEditMenu); setShowTranslateMenu(false); }} 
+                onClick={() => { setShowEditMenu(!showEditMenu); setShowTranslateMenu(false); setIsSearchActive(false); }} 
                 className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg transition-all text-[11px] md:text-xs font-bold ${showEditMenu ? 'bg-himalaya-red text-white border-himalaya-red shadow-md' : 'bg-white border-himalaya-gold/30 text-himalaya-slate hover:border-himalaya-red'}`}
               >
-                <Wand2 size={14} /> རྩོམ་སྒྲིག་ལག་ཆ། (文本处理)
+                < Wand2 size={14} /> རྩོམ་སྒྲིག་ལག་ཆ། (文本处理)
                 <ChevronDown size={12} className={`transition-transform duration-200 ${showEditMenu ? 'rotate-180' : ''}`} />
               </button>
               
               {showEditMenu && (
                 <div className="absolute bottom-full mb-2 left-0 bg-white border border-himalaya-gold/30 rounded-xl shadow-xl p-2 w-56 flex flex-col gap-1 animate-in slide-in-from-bottom-2 duration-200">
-                  <p className="text-[10px] text-gray-400 font-bold uppercase p-1 px-2 border-b border-gray-100">Select Action:</p>
                   <button onClick={() => applyProjectTool('polish')} className="flex items-center justify-between px-3 py-2 text-xs hover:bg-himalaya-cream rounded-lg group text-himalaya-slate">
-                    <div className="flex items-center gap-2">
-                      <Sparkles size={14} className="text-himalaya-gold" />
-                      <span>ལེགས་བཅོས། (润色)</span>
-                    </div>
+                    <div className="flex items-center gap-2"><Sparkles size={14} className="text-himalaya-gold" /><span>ལེགས་བཅོས། (润色)</span></div>
                     <ChevronRight size={10} className="opacity-0 group-hover:opacity-100" />
                   </button>
                   <button onClick={() => applyProjectTool('correct')} className="flex items-center justify-between px-3 py-2 text-xs hover:bg-himalaya-cream rounded-lg group text-himalaya-slate">
-                    <div className="flex items-center gap-2">
-                      <FileEdit size={14} className="text-himalaya-red/60" />
-                      <span>བཅོས་སྒྲིག། (修改)</span>
-                    </div>
+                    <div className="flex items-center gap-2"><FileEdit size={14} className="text-himalaya-red/60" /><span>བཅོས་སྒྲིག། (修改)</span></div>
                     <ChevronRight size={10} className="opacity-0 group-hover:opacity-100" />
                   </button>
                   <button onClick={() => applyProjectTool('expand')} className="flex items-center justify-between px-3 py-2 text-xs hover:bg-himalaya-cream rounded-lg group text-himalaya-slate">
-                    <div className="flex items-center gap-2">
-                      <Maximize size={14} className="text-blue-500" />
-                      <span>རྒྱ་སྐྱེད། (扩写)</span>
-                    </div>
+                    <div className="flex items-center gap-2"><Maximize size={14} className="text-blue-500" /><span>རྒྱ་སྐྱེད། (扩写)</span></div>
                     <ChevronRight size={10} className="opacity-0 group-hover:opacity-100" />
                   </button>
                 </div>
               )}
             </div>
             
-            {/* Translation Option Dropdown */}
+            {/* Translation Dropdown */}
             <div className="relative">
               <button 
-                onClick={() => { setShowTranslateMenu(!showTranslateMenu); setShowEditMenu(false); }} 
-                className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg transition-all text-[11px] md:text-xs font-bold ${showTranslateMenu ? 'bg-himalaya-red text-white border-himalaya-red shadow-md' : 'bg-white border-himalaya-gold/30 text-himalaya-slate hover:border-himalaya-red'}`}
+                onClick={() => { setShowTranslateMenu(!showTranslateMenu); setShowEditMenu(false); setIsSearchActive(false); }} 
+                className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg transition-all text-[11px] md:text-xs font-bold ${showTranslateMenu || activeTranslateLang ? 'bg-himalaya-red text-white border-himalaya-red shadow-md' : 'bg-white border-himalaya-gold/30 text-himalaya-slate hover:border-himalaya-red'}`}
               >
                 <Languages size={14} /> ཡིག་སྒྱུར། (翻译)
                 <ChevronDown size={12} className={`transition-transform duration-200 ${showTranslateMenu ? 'rotate-180' : ''}`} />
@@ -357,25 +433,154 @@ const App: React.FC = () => {
               
               {showTranslateMenu && (
                 <div className="absolute bottom-full mb-2 left-0 bg-white border border-himalaya-gold/30 rounded-xl shadow-xl p-2 w-48 flex flex-col gap-1 animate-in slide-in-from-bottom-2 duration-200">
-                  <p className="text-[10px] text-gray-400 font-bold uppercase p-1 px-2 border-b border-gray-100">Target Language:</p>
-                  <button onClick={() => applyProjectTool('translate', 'Tibetan')} className="text-left px-3 py-2 text-xs hover:bg-himalaya-cream rounded-lg font-tibetan text-himalaya-slate">བོད་ཡིག (Tibetan)</button>
-                  <button onClick={() => applyProjectTool('translate', 'Chinese')} className="text-left px-3 py-2 text-xs hover:bg-himalaya-cream rounded-lg font-sans text-himalaya-slate">中文 (Chinese)</button>
-                  <button onClick={() => applyProjectTool('translate', 'English')} className="text-left px-3 py-2 text-xs hover:bg-himalaya-cream rounded-lg font-sans text-himalaya-slate">English</button>
+                  {TRANSLATION_LANGS.map(lang => (
+                    <button 
+                      key={lang.id}
+                      onClick={() => applyProjectTool('translate', lang.id)} 
+                      className={`flex items-center justify-between px-3 py-2 text-xs hover:bg-himalaya-cream rounded-lg transition-colors ${activeTranslateLang === lang.id ? 'text-himalaya-red font-bold' : 'text-himalaya-slate'}`}
+                    >
+                      <div className="flex flex-col text-left">
+                        <span className={lang.id === 'Tibetan' ? 'font-tibetan' : 'font-sans'}>{lang.label}</span>
+                        <span className="text-[9px] opacity-60 uppercase tracking-tighter">{lang.sub}</span>
+                      </div>
+                      {activeTranslateLang === lang.id && <Check size={12} />}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
+
+            {/* Search Toggle */}
+            <button 
+              onClick={() => { setIsSearchActive(!isSearchActive); setShowEditMenu(false); setShowTranslateMenu(false); }} 
+              className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg transition-all text-[11px] md:text-xs font-bold ${isSearchActive ? 'bg-himalaya-gold text-white border-himalaya-gold shadow-md' : 'bg-white border-himalaya-gold/30 text-himalaya-slate hover:border-himalaya-red'}`}
+            >
+              <Search size={14} /> འཚོལ་བཤེར། (搜索)
+            </button>
+
+            {/* OCR Button */}
+            <button 
+              onClick={() => { fileInputRef.current?.click(); setIsSearchActive(false); setShowEditMenu(false); setShowTranslateMenu(false); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-himalaya-gold/30 rounded-lg transition-all text-[11px] md:text-xs font-bold bg-white text-himalaya-slate hover:border-himalaya-gold hover:bg-himalaya-cream"
+            >
+              <ImagePlus size={14} className="text-himalaya-gold" /> པར་རིས་ངོས་འཛིན། (图像识别)
+            </button>
+            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
           </div>
 
-          {/* Input Box */}
+          {/* Quick Translation Language Selection Bar (Sticky when translation tool is active) */}
+          {activeTranslateLang && !showTranslateMenu && (
+            <div className="flex items-center gap-2 p-2 bg-himalaya-red/5 border border-himalaya-red/20 rounded-xl animate-in slide-in-from-bottom-2 duration-300">
+              <div className="flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-bold text-himalaya-red uppercase tracking-wider border-r border-himalaya-red/20 mr-1">
+                <Languages size={10} /> འགྱུར་ཡིག་བདམས།
+              </div>
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                {TRANSLATION_LANGS.map(lang => (
+                  <button
+                    key={lang.id}
+                    onClick={() => applyProjectTool('translate', lang.id)}
+                    className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all border whitespace-nowrap ${activeTranslateLang === lang.id ? 'bg-himalaya-red text-white border-himalaya-red shadow-sm' : 'bg-white text-himalaya-slate border-gray-200 hover:border-himalaya-red/30'}`}
+                  >
+                    {lang.label}
+                  </button>
+                ))}
+              </div>
+              <button 
+                onClick={() => { 
+                  setInputText(inputText.replace(/^Please translate the following text into (Tibetan|Chinese|English)\. Focus on capturing the precise semantic meaning: \n\n/, '')); 
+                  setActiveTranslateLang(null); 
+                }}
+                className="ml-auto p-1 text-himalaya-slate/40 hover:text-himalaya-red transition-colors"
+                title="Clear Translation Tool"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          {/* Integrated Search Bar */}
+          {isSearchActive && (
+            <div className="flex flex-col gap-2 p-2 bg-himalaya-cream border border-himalaya-gold/30 rounded-xl animate-in slide-in-from-bottom-2 duration-300 shadow-inner">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 group">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-himalaya-slate/40" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    className="w-full bg-white border border-gray-200 focus:border-himalaya-gold rounded-lg py-1.5 pl-9 pr-8 text-xs outline-none"
+                    placeholder="འཚོལ་བཤེར། (Search conversation...)"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  {searchQuery && (
+                    <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-himalaya-red">
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  {filteredMessages.length > 0 && (
+                    <div className="flex items-center bg-white border border-gray-200 rounded-lg px-1 py-0.5">
+                      <span className="text-[10px] font-bold text-himalaya-slate px-2 border-r border-gray-100">
+                        {currentMatchIndex + 1}/{filteredMessages.length}
+                      </span>
+                      <button onClick={() => navigateSearch('prev')} disabled={currentMatchIndex === 0} className="p-1 hover:text-himalaya-red disabled:opacity-20"><ChevronUp size={14} /></button>
+                      <button onClick={() => navigateSearch('next')} disabled={currentMatchIndex === filteredMessages.length - 1} className="p-1 hover:text-himalaya-red disabled:opacity-20"><ChevronDown size={14} /></button>
+                    </div>
+                  )}
+                  <button onClick={() => setIsFuzzySearch(!isFuzzySearch)} className={`p-1.5 rounded-lg border text-[10px] font-bold ${isFuzzySearch ? 'bg-himalaya-red text-white' : 'bg-white text-gray-400 border-gray-200'}`}><Filter size={14} /></button>
+                </div>
+              </div>
+              {availableSources.length > 0 && (
+                <div className="flex items-center gap-2 pt-1 overflow-x-auto no-scrollbar border-t border-himalaya-gold/10">
+                  <div className="flex items-center gap-1 text-[9px] font-bold text-himalaya-gold/60 uppercase whitespace-nowrap"><Globe size={10} /> ཁུངས་སྣེ།:</div>
+                  <div className="flex items-center gap-1.5 pb-1">
+                    <button onClick={() => setSelectedSource(null)} className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border ${!selectedSource ? 'bg-himalaya-red text-white border-himalaya-red' : 'bg-white text-himalaya-slate border-gray-200 hover:border-himalaya-gold'}`}>All</button>
+                    {availableSources.map(source => (
+                      <button key={source} onClick={() => setSelectedSource(selectedSource === source ? null : source)} className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border whitespace-nowrap ${selectedSource === source ? 'bg-himalaya-red text-white border-himalaya-red' : 'bg-white text-himalaya-slate border-gray-200 hover:border-himalaya-gold'}`}>{source}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Pending Image Preview & Scanning UI */}
+          {pendingImage && (
+            <div className="flex items-center justify-between gap-3 p-3 bg-himalaya-cream border-2 border-himalaya-gold/40 rounded-xl animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="flex items-center gap-3">
+                <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-himalaya-gold shadow-sm">
+                  <img src={`data:${pendingImage.mime};base64,${pendingImage.data}`} alt="Upload preview" className="w-full h-full object-cover" />
+                  {isImageProcessing && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><Loader2 className="w-6 h-6 text-white animate-spin" /></div>}
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-himalaya-dark">པར་རིས་ངོས་འཛིན། (Ready to scan)</p>
+                  <p className="text-[10px] text-himalaya-slate uppercase tracking-wider">Image OCR Processing</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={handleScanImage} 
+                  disabled={isImageProcessing}
+                  className="flex items-center gap-2 px-4 py-2 bg-himalaya-red text-white rounded-lg text-xs font-bold hover:bg-red-900 transition-all shadow-md disabled:opacity-50"
+                >
+                  {isImageProcessing ? <Loader2 size={14} className="animate-spin" /> : <Scan size={14} />}
+                  <span>ཡིག་གཟུགས་ངོས་འཛིན། (Scan Text)</span>
+                </button>
+                <button onClick={() => setPendingImage(null)} disabled={isImageProcessing} className="p-2 text-himalaya-slate/40 hover:text-himalaya-red"><X size={20} /></button>
+              </div>
+            </div>
+          )}
+
+          {/* Message Input Box */}
           <div className="relative flex items-end gap-2">
             <textarea
               ref={inputRef}
               className="w-full bg-himalaya-cream/50 border-2 border-gray-300 focus:border-himalaya-red focus:ring-1 focus:ring-himalaya-red rounded-xl p-3 pr-12 text-base md:text-lg resize-none shadow-inner transition-all duration-200 min-h-[56px] max-h-32"
-              placeholder="འདིར་འབྲི་རོགས། (Type here or use tools above...)"
+              placeholder={activeTranslateLang ? `Translate into ${activeTranslateLang}...` : "འདིར་འབྲི་རོགས། (Type here or scan image above...)"}
               value={inputText}
               onChange={(e) => {
                 setInputText(e.target.value);
-                // Close menus on typing
                 if(showEditMenu) setShowEditMenu(false);
                 if(showTranslateMenu) setShowTranslateMenu(false);
               }}
@@ -385,13 +590,13 @@ const App: React.FC = () => {
                   handleSendMessage();
                 }
               }}
-              disabled={isLoading}
+              disabled={isLoading || isImageProcessing}
               rows={1}
             />
             <button
               onClick={() => handleSendMessage()}
-              disabled={!inputText.trim() || isLoading}
-              className={`absolute right-2 bottom-2 p-2 rounded-lg transition-all duration-200 flex items-center justify-center ${!inputText.trim() || isLoading ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-himalaya-red text-white hover:bg-red-900 shadow-md transform hover:scale-105 active:scale-95'}`}
+              disabled={!inputText.trim() || isLoading || isImageProcessing}
+              className={`absolute right-2 bottom-2 p-2 rounded-lg transition-all duration-200 flex items-center justify-center ${!inputText.trim() || isLoading || isImageProcessing ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-himalaya-red text-white hover:bg-red-900 shadow-md transform hover:scale-105 active:scale-95'}`}
             >
               {isLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send size={20} />}
             </button>
