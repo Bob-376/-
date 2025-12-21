@@ -128,7 +128,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEditSubmit, onReac
           regex.test(part) ? (
             <span 
               key={i} 
-              className="bg-himalaya-gold/40 border-b border-himalaya-gold rounded-sm transition-colors duration-200"
+              className="bg-himalaya-gold/40 border-b-2 border-himalaya-gold rounded-sm animate-highlight-pulse px-0.5"
             >
               {part}
             </span>

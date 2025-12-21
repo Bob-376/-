@@ -24,11 +24,16 @@
             },
             animation: {
               'typing-dot': 'typing-dot 1.4s infinite ease-in-out',
+              'highlight-pulse': 'highlight-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
             },
             keyframes: {
               'typing-dot': {
                 '0%, 80%, 100%': { transform: 'scale(0)', opacity: 0.3 },
                 '40%': { transform: 'scale(1)', opacity: 1 },
+              },
+              'highlight-pulse': {
+                '0%, 100%': { backgroundColor: 'rgba(212, 175, 55, 0.4)', borderColor: 'rgba(212, 175, 55, 1)' },
+                '50%': { backgroundColor: 'rgba(212, 175, 55, 0.6)', borderColor: 'rgba(139, 0, 0, 0.5)' },
               }
             }
           }
