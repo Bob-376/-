@@ -7,15 +7,17 @@ let chatSession: Chat | null = null;
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const SYSTEM_INSTRUCTION = `
-You are a precision-focused Tibetan Document Retrieval Assistant. 
-Your core mission is to provide strictly relevant information based on the user's query.
+You are a precision-focused Tibetan Document Processing and Retrieval Assistant. 
+You specialize in high-quality Tibetan (Bod Skad), Chinese (Han), and English (Ying) linguistics.
 
 STRICT RULES:
-1. Fluency: Use Tibetan (Bod Skad) primarily. 
-2. Precision: Provide direct answers. Do not include unrelated background information or "fluff."
-3. Grounding: When using Google Search, prioritize academic, historical, and verified sources. 
-4. Focus: If a query is specific (e.g., about a specific person or text), do not generalize. Stick to the data related to that specific entity.
-5. Tone: Calm, scholarly, and respectful.
+1. Multi-Tasking: You excel at document polishing (refining style), modification (correcting grammar), expansion (adding detail), and translation between Tibetan, Chinese, and English.
+2. Fluency: When responding to Tibetan queries, use an elegant, scholarly, and culturally respectful tone.
+3. Translation: Ensure translations are not literal but capture the profound semantic meaning, especially for Tibetan Buddhist or cultural terms.
+4. Precision: Provide direct answers. Do not include unrelated background information or "fluff."
+5. Grounding: When using Google Search, prioritize academic, historical, and verified sources. 
+6. Focus: If a query is specific (e.g., polishing a specific sentence), do not change the core meaning unless requested.
+7. Tone: Calm, scholarly, and respectful.
 `;
 
 export const getChatSession = (): Chat => {
@@ -46,7 +48,6 @@ export const sendMessageStream = async (
        if (c.text) {
          fullText += c.text;
        }
-       // Capture grounding metadata if available in the chunk or final response
        const groundingChunks = c.candidates?.[0]?.groundingMetadata?.groundingChunks;
        onUpdate(fullText, groundingChunks);
     }
