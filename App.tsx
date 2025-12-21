@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Send, Sparkles, AlertCircle, X, Search, Filter, ExternalLink, 
   HelpCircle, ChevronUp, ChevronDown, Languages, FileEdit, 
-  Maximize, Wand2, Briefcase, ChevronRight, Globe, ImagePlus, Loader2, Scan, Check
+  Maximize, Wand2, Briefcase, ChevronRight, Globe, ImagePlus, Loader2, Scan, Check, Paperclip
 } from 'lucide-react';
 import Header from './components/Header';
 import ChatMessage from './components/ChatMessage';
@@ -11,9 +11,9 @@ import { Message } from './types';
 import { sendMessageStream, resetChat, extractTextFromImage } from './services/geminiService';
 
 const TRANSLATION_LANGS = [
-  { id: 'Tibetan', label: 'བོད་ཡིག', sub: 'Tibetan' },
-  { id: 'Chinese', label: '中文', sub: 'Chinese' },
-  { id: 'English', label: 'English', sub: 'English' }
+  { id: 'Tibetan', label: 'བོད་ཡིག', sub: '藏语 / Tibetan' },
+  { id: 'Chinese', label: '中文', sub: '中文 / Chinese' },
+  { id: 'English', label: 'English', sub: '英语 / English' }
 ];
 
 const App: React.FC = () => {
@@ -136,7 +136,7 @@ const App: React.FC = () => {
       );
     } catch (err: any) {
       console.error(err);
-      const errorMessage = "དགོངས་དག ནོར་འཁྲུལ་ཞིག་བྱུང་སོང་།";
+      const errorMessage = "དགོངས་དག ནོར་འཁྲུལ་ཞིག་བྱུང་སོང་། (抱歉，发生了一些错误。)";
       setError(errorMessage + (err.message ? `\nDetails: ${err.message}` : ''));
       setMessages((prev) => prev.filter(msg => msg.id !== botMsgId || msg.text !== ''));
     } finally {
@@ -230,7 +230,7 @@ const App: React.FC = () => {
       {
         id: Date.now().toString(),
         role: 'model',
-        text: 'བཀྲ་ཤིས་བདེ་ལེགས། འདི་ནི་བོད་ཀྱི་ཡིག་རིགས་བཙལ་བཤེར་མ་ལག་ཡིན། ངས་ཁྱེད་ལ་ག་རེ་རོགས་པ་བྱེད་ཐུབ།',
+        text: 'བཀྲ་ཤིས་བདེ་ལེགས། འདི་ནི་བོད་ཀྱི་ཡིག་རིགས་བཙལ་བཤེར་མ་ལག་ཡིན། ངས་ཁྱེད་ལ་ག་རེ་རོགས་པ་བྱེད་ཐུབ།\n(扎西德勒！这是西藏文献检索系统。我能为您做些什么？)',
         isStreaming: false,
         timestamp: Date.now(),
         reactions: {}
@@ -262,11 +262,11 @@ const App: React.FC = () => {
         setInputText(extractedText);
         setPendingImage(null);
       } else {
-        setError("པར་རིས་ལས་ཡིག་རིགས་རྙེད་མ་སོང་། (No text found in image)");
+        setError("པར་རིས་ལས་ཡིག་རིགས་རྙེད་མ་སོང་། (图片中未发现文字 / No text found in image)");
       }
     } catch (err: any) {
       console.error(err);
-      setError("པར་རིས་ངོས་འཛིན་བྱེད་སྐབས་ནོར་འཁྲུལ་བྱུང་སོང་། (Error processing image)");
+      setError("པར་རིས་ངོས་འཛིན་བྱེད་སྐབས་ནོར་འཁྲུལ་བྱུང་སོང་། (处理图片时出错 / Error processing image)");
     } finally {
       setIsImageProcessing(false);
       inputRef.current?.focus();
@@ -357,7 +357,7 @@ const App: React.FC = () => {
               <div className="flex-1 pr-8">
                 <p className="text-sm md:text-base text-himalaya-red font-medium leading-relaxed mb-3">{error}</p>
                 <div className="flex flex-wrap items-center gap-4">
-                  <button onClick={() => handleSendMessage()} className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-himalaya-red bg-himalaya-red/10 hover:bg-himalaya-red hover:text-white px-3 py-1.5 rounded-lg transition-all">ཕྱིར་མངགས། (Retry)</button>
+                  <button onClick={() => handleSendMessage()} className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-himalaya-red bg-himalaya-red/10 hover:bg-himalaya-red hover:text-white px-3 py-1.5 rounded-lg transition-all">ཕྱིར་མངགས། (重试 / Retry)</button>
                 </div>
               </div>
               <button onClick={() => setError(null)} className="absolute top-2 right-2 p-1 text-himalaya-red/50 hover:text-himalaya-red"><X size={18} /></button>
@@ -369,7 +369,7 @@ const App: React.FC = () => {
            {filteredMessages.length === 0 ? (
              <div className="flex flex-col items-center justify-center h-64 text-himalaya-slate/40">
                <Sparkles className="w-12 h-12 mb-2 opacity-20" />
-               <p className="font-tibetan text-lg">{searchQuery || selectedSource ? 'འཚོལ་ཐབས་མ་རྙེད། (No results found)' : 'འགོ་འཛུགས་རོགས། (Start a conversation)'}</p>
+               <p className="font-tibetan text-lg">{searchQuery || selectedSource ? 'འཚོལ་ཐབས་མ་རྙེད། (未找到结果 / No results)' : 'འགོ་འཛུགས་རོགས། (开始对话 / Start conversation)'}</p>
              </div>
            ) : (
              filteredMessages.map((msg, idx) => (
@@ -399,22 +399,22 @@ const App: React.FC = () => {
                 onClick={() => { setShowEditMenu(!showEditMenu); setShowTranslateMenu(false); setIsSearchActive(false); }} 
                 className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg transition-all text-[11px] md:text-xs font-bold ${showEditMenu ? 'bg-himalaya-red text-white border-himalaya-red shadow-md' : 'bg-white border-himalaya-gold/30 text-himalaya-slate hover:border-himalaya-red'}`}
               >
-                < Wand2 size={14} /> རྩོམ་སྒྲིག་ལག་ཆ། (文本处理)
+                < Wand2 size={14} /> རྩོམ་སྒྲིག་ལག་ཆ། (文本处理 / Edit)
                 <ChevronDown size={12} className={`transition-transform duration-200 ${showEditMenu ? 'rotate-180' : ''}`} />
               </button>
               
               {showEditMenu && (
                 <div className="absolute bottom-full mb-2 left-0 bg-white border border-himalaya-gold/30 rounded-xl shadow-xl p-2 w-56 flex flex-col gap-1 animate-in slide-in-from-bottom-2 duration-200">
                   <button onClick={() => applyProjectTool('polish')} className="flex items-center justify-between px-3 py-2 text-xs hover:bg-himalaya-cream rounded-lg group text-himalaya-slate">
-                    <div className="flex items-center gap-2"><Sparkles size={14} className="text-himalaya-gold" /><span>ལེགས་བཅོས། (润色)</span></div>
+                    <div className="flex items-center gap-2"><Sparkles size={14} className="text-himalaya-gold" /><span>ལེགས་བཅོས། (润色 / Polish)</span></div>
                     <ChevronRight size={10} className="opacity-0 group-hover:opacity-100" />
                   </button>
                   <button onClick={() => applyProjectTool('correct')} className="flex items-center justify-between px-3 py-2 text-xs hover:bg-himalaya-cream rounded-lg group text-himalaya-slate">
-                    <div className="flex items-center gap-2"><FileEdit size={14} className="text-himalaya-red/60" /><span>བཅོས་སྒྲིག། (修改)</span></div>
+                    <div className="flex items-center gap-2"><FileEdit size={14} className="text-himalaya-red/60" /><span>བཅོས་སྒྲིག། (修改 / Correct)</span></div>
                     <ChevronRight size={10} className="opacity-0 group-hover:opacity-100" />
                   </button>
                   <button onClick={() => applyProjectTool('expand')} className="flex items-center justify-between px-3 py-2 text-xs hover:bg-himalaya-cream rounded-lg group text-himalaya-slate">
-                    <div className="flex items-center gap-2"><Maximize size={14} className="text-blue-500" /><span>རྒྱ་སྐྱེད། (扩写)</span></div>
+                    <div className="flex items-center gap-2"><Maximize size={14} className="text-blue-500" /><span>རྒྱ་སྐྱེད། (扩写 / Expand)</span></div>
                     <ChevronRight size={10} className="opacity-0 group-hover:opacity-100" />
                   </button>
                 </div>
@@ -427,7 +427,7 @@ const App: React.FC = () => {
                 onClick={() => { setShowTranslateMenu(!showTranslateMenu); setShowEditMenu(false); setIsSearchActive(false); }} 
                 className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg transition-all text-[11px] md:text-xs font-bold ${showTranslateMenu || activeTranslateLang ? 'bg-himalaya-red text-white border-himalaya-red shadow-md' : 'bg-white border-himalaya-gold/30 text-himalaya-slate hover:border-himalaya-red'}`}
               >
-                <Languages size={14} /> ཡིག་སྒྱུར། (翻译)
+                <Languages size={14} /> ཡིག་སྒྱུར། (翻译 / Translate)
                 <ChevronDown size={12} className={`transition-transform duration-200 ${showTranslateMenu ? 'rotate-180' : ''}`} />
               </button>
               
@@ -455,24 +455,23 @@ const App: React.FC = () => {
               onClick={() => { setIsSearchActive(!isSearchActive); setShowEditMenu(false); setShowTranslateMenu(false); }} 
               className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg transition-all text-[11px] md:text-xs font-bold ${isSearchActive ? 'bg-himalaya-gold text-white border-himalaya-gold shadow-md' : 'bg-white border-himalaya-gold/30 text-himalaya-slate hover:border-himalaya-red'}`}
             >
-              <Search size={14} /> འཚོལ་བཤེར། (搜索)
+              <Search size={14} /> འཚོལ་བཤེར། (搜索 / Search)
             </button>
 
-            {/* OCR Button */}
+            {/* OCR Button in Toolbar */}
             <button 
               onClick={() => { fileInputRef.current?.click(); setIsSearchActive(false); setShowEditMenu(false); setShowTranslateMenu(false); }}
               className="flex items-center gap-1.5 px-3 py-1.5 border border-himalaya-gold/30 rounded-lg transition-all text-[11px] md:text-xs font-bold bg-white text-himalaya-slate hover:border-himalaya-gold hover:bg-himalaya-cream"
             >
-              <ImagePlus size={14} className="text-himalaya-gold" /> པར་རིས་ངོས་འཛིན། (图像识别)
+              <ImagePlus size={14} className="text-himalaya-gold" /> པར་རིས་ངོས་འཛིན། (识图 / OCR)
             </button>
-            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
           </div>
 
-          {/* Quick Translation Language Selection Bar (Sticky when translation tool is active) */}
+          {/* Quick Translation Language Selection Bar */}
           {activeTranslateLang && !showTranslateMenu && (
             <div className="flex items-center gap-2 p-2 bg-himalaya-red/5 border border-himalaya-red/20 rounded-xl animate-in slide-in-from-bottom-2 duration-300">
               <div className="flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-bold text-himalaya-red uppercase tracking-wider border-r border-himalaya-red/20 mr-1">
-                <Languages size={10} /> འགྱུར་ཡིག་བདམས།
+                <Languages size={10} /> འགྱུར་ཡིག་བདམས། (目标语言)
               </div>
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
                 {TRANSLATION_LANGS.map(lang => (
@@ -508,7 +507,7 @@ const App: React.FC = () => {
                     ref={searchInputRef}
                     type="text"
                     className="w-full bg-white border border-gray-200 focus:border-himalaya-gold rounded-lg py-1.5 pl-9 pr-8 text-xs outline-none"
-                    placeholder="འཚོལ་བཤེར། (Search conversation...)"
+                    placeholder="འཚོལ་བཤེར། (搜索对话... / Search conversation...)"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -535,7 +534,7 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-2 pt-1 overflow-x-auto no-scrollbar border-t border-himalaya-gold/10">
                   <div className="flex items-center gap-1 text-[9px] font-bold text-himalaya-gold/60 uppercase whitespace-nowrap"><Globe size={10} /> ཁུངས་སྣེ།:</div>
                   <div className="flex items-center gap-1.5 pb-1">
-                    <button onClick={() => setSelectedSource(null)} className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border ${!selectedSource ? 'bg-himalaya-red text-white border-himalaya-red' : 'bg-white text-himalaya-slate border-gray-200 hover:border-himalaya-gold'}`}>All</button>
+                    <button onClick={() => setSelectedSource(null)} className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border ${!selectedSource ? 'bg-himalaya-red text-white border-himalaya-red' : 'bg-white text-himalaya-slate border-gray-200 hover:border-himalaya-gold'}`}>全部</button>
                     {availableSources.map(source => (
                       <button key={source} onClick={() => setSelectedSource(selectedSource === source ? null : source)} className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border whitespace-nowrap ${selectedSource === source ? 'bg-himalaya-red text-white border-himalaya-red' : 'bg-white text-himalaya-slate border-gray-200 hover:border-himalaya-gold'}`}>{source}</button>
                     ))}
@@ -554,7 +553,7 @@ const App: React.FC = () => {
                   {isImageProcessing && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><Loader2 className="w-6 h-6 text-white animate-spin" /></div>}
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-himalaya-dark">པར་རིས་ངོས་འཛིན། (Ready to scan)</p>
+                  <p className="text-xs font-bold text-himalaya-dark">པར་རིས་ངོས་འཛིན། (识图就绪 / Ready)</p>
                   <p className="text-[10px] text-himalaya-slate uppercase tracking-wider">Image OCR Processing</p>
                 </div>
               </div>
@@ -565,44 +564,54 @@ const App: React.FC = () => {
                   className="flex items-center gap-2 px-4 py-2 bg-himalaya-red text-white rounded-lg text-xs font-bold hover:bg-red-900 transition-all shadow-md disabled:opacity-50"
                 >
                   {isImageProcessing ? <Loader2 size={14} className="animate-spin" /> : <Scan size={14} />}
-                  <span>ཡིག་གཟུགས་ངོས་འཛིན། (Scan Text)</span>
+                  <span>ཡིག་གཟུགས་ངོས་འཛིན། (开始识别 / Scan Text)</span>
                 </button>
                 <button onClick={() => setPendingImage(null)} disabled={isImageProcessing} className="p-2 text-himalaya-slate/40 hover:text-himalaya-red"><X size={20} /></button>
               </div>
             </div>
           )}
 
-          {/* Message Input Box */}
+          {/* Message Input Box with integrated Image Upload Button */}
           <div className="relative flex items-end gap-2">
-            <textarea
-              ref={inputRef}
-              className="w-full bg-himalaya-cream/50 border-2 border-gray-300 focus:border-himalaya-red focus:ring-1 focus:ring-himalaya-red rounded-xl p-3 pr-12 text-base md:text-lg resize-none shadow-inner transition-all duration-200 min-h-[56px] max-h-32"
-              placeholder={activeTranslateLang ? `Translate into ${activeTranslateLang}...` : "འདིར་འབྲི་རོགས། (Type here or scan image above...)"}
-              value={inputText}
-              onChange={(e) => {
-                setInputText(e.target.value);
-                if(showEditMenu) setShowEditMenu(false);
-                if(showTranslateMenu) setShowTranslateMenu(false);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-              disabled={isLoading || isImageProcessing}
-              rows={1}
-            />
-            <button
-              onClick={() => handleSendMessage()}
-              disabled={!inputText.trim() || isLoading || isImageProcessing}
-              className={`absolute right-2 bottom-2 p-2 rounded-lg transition-all duration-200 flex items-center justify-center ${!inputText.trim() || isLoading || isImageProcessing ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-himalaya-red text-white hover:bg-red-900 shadow-md transform hover:scale-105 active:scale-95'}`}
-            >
-              {isLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send size={20} />}
-            </button>
+            <div className="flex-1 relative flex items-center">
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute left-2 bottom-2 p-2 text-himalaya-gold hover:text-himalaya-red hover:bg-himalaya-cream rounded-lg transition-all z-10"
+                title="Upload Image for OCR (识图识别文字)"
+              >
+                <Paperclip size={20} />
+              </button>
+              <textarea
+                ref={inputRef}
+                className="w-full bg-himalaya-cream/50 border-2 border-gray-300 focus:border-himalaya-red focus:ring-1 focus:ring-himalaya-red rounded-xl py-3 pl-11 pr-12 text-base md:text-lg resize-none shadow-inner transition-all duration-200 min-h-[56px] max-h-32"
+                placeholder={activeTranslateLang ? `Translate into ${activeTranslateLang}...` : "འདིར་འབྲི་རོགས། (在此输入... / Type here...)"}
+                value={inputText}
+                onChange={(e) => {
+                  setInputText(e.target.value);
+                  if(showEditMenu) setShowEditMenu(false);
+                  if(showTranslateMenu) setShowTranslateMenu(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                disabled={isLoading || isImageProcessing}
+                rows={1}
+              />
+              <button
+                onClick={() => handleSendMessage()}
+                disabled={!inputText.trim() || isLoading || isImageProcessing}
+                className={`absolute right-2 bottom-2 p-2 rounded-lg transition-all duration-200 flex items-center justify-center ${!inputText.trim() || isLoading || isImageProcessing ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-himalaya-red text-white hover:bg-red-900 shadow-md transform hover:scale-105 active:scale-95'}`}
+              >
+                {isLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send size={20} />}
+              </button>
+            </div>
           </div>
         </div>
       </div>
+      <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
     </div>
   );
 };

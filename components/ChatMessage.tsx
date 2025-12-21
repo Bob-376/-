@@ -185,7 +185,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEditSubmit, onReac
                       <div className="absolute top-full right-0 mt-1 w-64 bg-white border border-gray-200 rounded-xl shadow-xl z-30 p-2 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                         <div className="flex items-center gap-2 px-2 py-1 border-b border-gray-100 mb-1">
                           <History size={12} className="text-himalaya-red" />
-                          <span className="text-[10px] font-bold uppercase text-himalaya-slate tracking-tighter">སྔོན་གྱི་ཡིག་རིགས། (Previous Versions)</span>
+                          <span className="text-[10px] font-bold uppercase text-himalaya-slate tracking-tighter">སྔོན་གྱི་ཡིག་རིགས། (历史版本 / History)</span>
                         </div>
                         <div className="max-h-48 overflow-y-auto space-y-2 p-1">
                           {message.history?.slice().reverse().map((version, i) => (
@@ -221,7 +221,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEditSubmit, onReac
                   <textarea
                     ref={editInputRef}
                     className="w-full bg-himalaya-cream/50 border-2 border-gray-300 focus:border-himalaya-red focus:ring-1 focus:ring-himalaya-red rounded-xl p-3 text-base md:text-lg resize-none shadow-inner transition-all duration-200 min-h-[50px]"
-                    placeholder="བཅོས་སྒྲིག་བྱེད་བཞིན་པ། (Editing message...)"
+                    placeholder="བཅོས་སྒྲིག་བྱེད་བཞིན་པ། (正在编辑... / Editing...)"
                     value={editText}
                     onChange={(e) => {
                       setEditText(e.target.value);
@@ -247,26 +247,26 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEditSubmit, onReac
                   {historyNavIndex !== null && (
                     <div className="absolute top-1 right-3 flex items-center gap-1 bg-himalaya-gold/20 text-[9px] font-bold text-himalaya-gold px-2 py-0.5 rounded-full border border-himalaya-gold/30 pointer-events-none animate-in fade-in duration-200">
                       <History size={10} />
-                      VERSION {historyNavIndex + 1}/{message.history?.length}
+                      版本 {historyNavIndex + 1}/{message.history?.length}
                     </div>
                   )}
                 </div>
                 <div className="flex justify-between items-center px-1">
                   <div className="text-[9px] text-himalaya-slate/40 font-bold uppercase tracking-widest flex items-center gap-2">
-                    <span className="flex items-center gap-1"><kbd className="bg-gray-100 px-1 rounded border">Ctrl</kbd>+<kbd className="bg-gray-100 px-1 rounded border">↑</kbd>/<kbd className="bg-gray-100 px-1 rounded border">↓</kbd> History</span>
+                    <span className="flex items-center gap-1"><kbd className="bg-gray-100 px-1 rounded border">Ctrl</kbd>+<kbd className="bg-gray-100 px-1 rounded border">↑</kbd>/<kbd className="bg-gray-100 px-1 rounded border">↓</kbd> 历史 (History)</span>
                   </div>
                   <div className="flex justify-end gap-1">
                     <button 
                       onClick={() => setIsEditing(false)} 
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-himalaya-slate hover:text-himalaya-red transition-colors"
                     >
-                      <X size={14} /> ཕྱིར་འཐེན། (Cancel)
+                      <X size={14} /> ཕྱིར་འཐེན། (取消 / Cancel)
                     </button>
                     <button 
                       onClick={() => { onEditSubmit?.(editText, message.id); setIsEditing(false); }} 
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-himalaya-red text-white rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-red-900 transition-all shadow-sm"
                     >
-                      <Save size={14} /> ཉར་ཚགས། (Save)
+                      <Save size={14} /> ཉར་ཚགས། (保存 / Save)
                     </button>
                   </div>
                 </div>
@@ -282,10 +282,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEditSubmit, onReac
 
             {!isEditing && !isThinking && (
               <div className={`mt-3 flex items-center gap-2 text-[10px] opacity-75 font-sans ${isUser ? 'justify-end' : 'justify-start'}`}>
-                 {hasHistory && <span className="flex items-center gap-0.5 text-himalaya-red font-bold"><History size={10} /> བཅོས་ཟིན། (Edited)</span>}
+                 {hasHistory && <span className="flex items-center gap-0.5 text-himalaya-red font-bold"><History size={10} /> བཅོས་ཟིན། (已编辑 / Edited)</span>}
                  <div className="flex items-center gap-1">
                    <Hash size={10} />
-                   <span>{charCount} ཡིག་འབྲུ།</span>
+                   <span>{charCount} 字符 (Chars)</span>
                  </div>
               </div>
             )}
@@ -296,7 +296,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEditSubmit, onReac
             <div className="mt-3 space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
               <div className="flex items-center gap-2 text-himalaya-gold font-bold text-xs px-1">
                 <Library size={14} />
-                <span>ཁུངས་སྣེ། (Sources & Related Information)</span>
+                <span>ཁུངས་སྣེ། (来源与参考 / Sources)</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {message.groundingChunks.map((chunk, idx) => chunk.web && (
