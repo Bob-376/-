@@ -15,6 +15,7 @@ export interface Message {
   timestamp: number;
   reactions?: Record<string, number>;
   groundingChunks?: GroundingChunk[];
+  isPinned?: boolean;
 }
 
 export interface ChatState {
