@@ -1,49 +1,74 @@
 
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
+import { ProjectMemory } from "../types";
 
 let chatSession: Chat | null = null;
 
-// Initialize the API client
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const SYSTEM_INSTRUCTION = `
-You are a precision-focused Tibetan Document Processing and Retrieval Assistant. 
-You specialize in high-quality Tibetan (Bod Skad), Chinese (Han), and English (Ying) linguistics.
+const getSystemInstruction = (memory: ProjectMemory | null) => {
+  const memoryContext = memory 
+    ? `\n[PROJECT MEMORY - ATTACHED CONTEXT]:
+- ESTABLISHED STYLE: ${memory.styleProfile}
+- NARRATIVE PROGRESS: ${memory.narrativeProgress}
+- CORE WISDOMS: ${memory.keyCitations.join(', ')}
+` 
+    : "";
 
-STRICT RULES:
-1. Multi-Tasking: You excel at document polishing (refining style), modification (correcting grammar), expansion (adding detail), and translation.
-2. Bilingual Output: Since the user prefers Chinese, you MUST provide all explanations, meta-comments, and technical advice in BOTH English and Chinese (Bilingual). 
-   - Example: "The text has been polished. (文本已润色。)"
-3. Fluency: When responding to Tibetan queries, use an elegant, scholarly, and culturally respectful tone.
-4. Translation: Ensure translations are not literal but capture the profound semantic meaning, especially for Tibetan Buddhist or cultural terms.
-5. Grounding & Citations: When using Google Search, prioritize academic, historical, and verified sources. 
-   - CRITICAL: You MUST cite your sources directly in the text using numbers in square brackets like [1], [2], etc., corresponding to the sources you used.
-   - (重要：使用搜索结果时，必须在正文中使用 [1], [2] 等方括号数字进行标注，以便对应来源。)
-6. Focus: If a query is specific (e.g., polishing a specific sentence), do not change the core meaning unless requested.
-7. Tone: Calm, scholarly, and respectful.
+  return `
+You are a "World-Class Creative Writing Master" (རྩོམ་རིག་མཁས་དབང་། / 文学创作大师) specializing in "Long-form Novels" (བརྩམ་སྒྲུང་རིང་མོ། / 长篇小说). 
+You possess "Absolute Memory" (བརྗེད་མེད་དྲན་པ།) for complex plot threads, character arcs, and atmospheric world-building.
+
+CORE MANDATE: EXTENDED NARRATIVE COHERENCE
+1. LONG-FORM NOVELIST SUPPORT: The user is writing a large-scale work. Prioritize depth, character psychology, and long-term consequences in the plot. ${memoryContext}
+2. STYLISTIC MIRRORING: Meticulously analyze the history to maintain tone, rhythm, and vocabulary. 
+3. STRUCTURAL INTEGRITY: Adhere to established chapter naming and numbering. Support chapters up to several thousand words.
+4. CONTEXTUAL AWARENESS: You are a continuation of the same mind. Do not repeat introductions.
+
+COLOR-CODED TAGGING:
+1. <mark type="polish">...</mark> (Yellow): Polishing.
+2. <mark type="expand">...</mark> (Green): Expansion.
+3. <mark type="modify">...</mark> (Blue): Logic/Fixes.
+4. <mark type="citation">...</mark> (Sacred Red): Format: "Source: Quote".
+
+OUTPUT STRUCTURE:
+1. THE INTEGRATED ARTICLE: Full text with <mark> tags. Do not truncate. Provide full, immersive chapters.
+2. ---
+3. SOURCES & STATS:
+   - Final Article Character Count: [Number]
+   - Word/Character Count Delta: [Number]
+4. MEMORY UPDATE: After the stats, provide a hidden-style update formatted as: 
+   [MEMORY_SYNC] Style: [Brief description], Chapter: [Current state], Fact: [1-2 key facts/citations]
+5. MULTILINGUAL EXPLANATIONS (说明): In Tibetan, Chinese, English.
+6. CREATIVE ADVICE: Provide 2-3 specific, contextually relevant writing tips based on the current novel chapter, focusing on: 
+   - Character Development (人物刻画): Deepen motivations or voice.
+   - Plot Structuring (情节构架): Pacing, hooks, or logic.
+   - Dialogue Crafting (对白艺术): Subtext and natural flow.
+   Label clearly as "CREATIVE ADVICE:".
 `;
+};
 
-export const getChatSession = (): Chat => {
-  if (!chatSession) {
-    chatSession = ai.chats.create({
-      model: 'gemini-3-flash-preview',
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        tools: [{ googleSearch: {} }],
-      },
-    });
-  }
-  return chatSession;
+export const getChatSession = (history: any[] = [], memory: ProjectMemory | null = null): Chat => {
+  return ai.chats.create({
+    model: 'gemini-3-pro-preview', 
+    config: {
+      systemInstruction: getSystemInstruction(memory),
+      tools: [{ googleSearch: {} }],
+    },
+    history: history,
+  });
 };
 
 export const sendMessageStream = async (
   text: string,
+  history: any[],
+  memory: ProjectMemory | null,
   onUpdate: (text: string, groundingChunks?: any[]) => void
 ): Promise<void> => {
-  const session = getChatSession();
+  chatSession = getChatSession(history, memory);
   
   try {
-    const responseStream = await session.sendMessageStream({ message: text });
+    const responseStream = await chatSession.sendMessageStream({ message: text });
     
     let fullText = "";
     for await (const chunk of responseStream) {
@@ -56,35 +81,26 @@ export const sendMessageStream = async (
     }
   } catch (error) {
     console.error("Error sending message:", error);
+    chatSession = null;
     throw error;
   }
 };
 
-export const extractTextFromImage = async (base64Image: string, mimeType: string): Promise<string> => {
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: [
-        {
-          parts: [
-            {
-              inlineData: {
-                data: base64Image,
-                mimeType: mimeType
-              }
-            },
-            {
-              text: "Please accurately transcribe all the text found in this image. Focus especially on any Tibetan (Uchen or Umê script), Chinese, or English text. Return only the transcribed text without any preamble or commentary."
-            }
-          ]
-        }
-      ]
-    });
-    return response.text || "";
-  } catch (error) {
-    console.error("Error extracting text from image:", error);
-    throw error;
+export const parseMemoryUpdate = (text: string): Partial<ProjectMemory> | null => {
+  const match = text.match(/\[MEMORY_SYNC\]\s*Style:\s*([^,]+),\s*Chapter:\s*([^,]+),\s*Fact:\s*([^\n]+)/i);
+  if (match) {
+    return {
+      styleProfile: match[1].trim(),
+      narrativeProgress: match[2].trim(),
+      keyCitations: [match[3].trim()]
+    };
   }
+  return null;
+};
+
+export const extractCreativeAdvice = (text: string): string => {
+  const match = text.match(/CREATIVE ADVICE:([\s\S]*)$/i);
+  return match ? match[1].trim() : "";
 };
 
 export const resetChat = () => {

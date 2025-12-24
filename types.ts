@@ -10,7 +10,7 @@ export interface Message {
   id: string;
   role: 'user' | 'model';
   text: string;
-  history?: string[]; // Array of previous message texts
+  history?: string[]; 
   isStreaming?: boolean;
   timestamp: number;
   reactions?: Record<string, number>;
@@ -18,8 +18,16 @@ export interface Message {
   isPinned?: boolean;
 }
 
+export interface ProjectMemory {
+  styleProfile: string;
+  narrativeProgress: string;
+  keyCitations: string[];
+  lastUpdated: number;
+}
+
 export interface ChatState {
   messages: Message[];
   isLoading: boolean;
   error: string | null;
+  memory: ProjectMemory | null;
 }
