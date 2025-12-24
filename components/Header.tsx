@@ -1,6 +1,6 @@
 
-import React from 'react';
-import { RefreshCcw, BrainCircuit, Lightbulb } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { RefreshCcw, BrainCircuit, Lightbulb, Play, Pause, RotateCcw, Coffee, PenTool as Pen } from 'lucide-react';
 
 interface HeaderProps {
   onReset: () => void;
@@ -13,9 +13,54 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ onReset, onToggleMemory, onToggleWorkshop, pinCount, projectName }) => {
+  // 计时器状态
+  const [mode, setMode] = useState<'work' | 'rest'>('work');
+  const [timeLeft, setTimeLeft] = useState(25 * 60);
+  const [isActive, setIsActive] = useState(false);
+  // Fix: Replaced NodeJS.Timeout with number to avoid namespace errors in browser environments.
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isActive && timeLeft > 0) {
+      // Fix: Use window.setInterval to ensure the return type is handled as a number in the browser.
+      timerRef.current = window.setInterval(() => {
+        setTimeLeft((prev) => prev - 1);
+      }, 1000);
+    } else if (timeLeft === 0) {
+      setIsActive(false);
+      // 时间到，震动或提醒（此处简单处理）
+      if (timerRef.current) clearInterval(timerRef.current);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [isActive, timeLeft]);
+
+  const toggleTimer = () => setIsActive(!isActive);
+  
+  const resetTimer = () => {
+    setIsActive(false);
+    setTimeLeft(mode === 'work' ? 25 * 60 : 5 * 60);
+  };
+
+  const switchMode = () => {
+    const newMode = mode === 'work' ? 'rest' : 'work';
+    setMode(newMode);
+    setIsActive(false);
+    setTimeLeft(newMode === 'work' ? 25 * 60 : 5 * 60);
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   return (
     <header className="bg-himalaya-red text-himalaya-cream p-4 shadow-xl border-b-4 border-himalaya-gold sticky top-0 z-40">
-      <div className="max-w-7xl mx-auto flex justify-between items-center px-2">
+      <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 px-2">
+        
+        {/* 左侧：Logo与标题 */}
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-himalaya-gold flex items-center justify-center shadow-lg transform -rotate-3 border-2 border-white/20">
              <FeatherIcon className="text-himalaya-red w-7 h-7" />
@@ -26,11 +71,11 @@ const Header: React.FC<HeaderProps> = ({ onReset, onToggleMemory, onToggleWorksh
             </h1>
             <div className="flex items-center gap-2">
               <span className="text-[10px] md:text-xs text-himalaya-gold font-bold uppercase tracking-[0.2em] opacity-80">
-                Tibetan Master Scribe Engine
+                Tibetan Master Scribe
               </span>
               {projectName && (
-                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-black/20 rounded-full border border-white/10 animate-in fade-in slide-in-from-left-2">
-                  <div className="w-1.5 h-1.5 bg-himalaya-gold rounded-full animate-pulse shadow-[0_0_8px_#D4AF37]" />
+                <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 bg-black/20 rounded-full border border-white/10">
+                  <div className="w-1.5 h-1.5 bg-himalaya-gold rounded-full animate-pulse" />
                   <span className="text-[9px] font-bold text-white/80 uppercase tracking-wider truncate max-w-[120px]">
                     {projectName}
                   </span>
@@ -39,12 +84,56 @@ const Header: React.FC<HeaderProps> = ({ onReset, onToggleMemory, onToggleWorksh
             </div>
           </div>
         </div>
+
+        {/* 中间：心流计时器 (Health Monitor) */}
+        <div className="flex items-center gap-3 bg-black/20 px-4 py-2 rounded-2xl border border-white/10 shadow-inner">
+          <div className="flex flex-col items-center mr-2">
+             <span className={`text-[8px] font-bold uppercase tracking-widest ${mode === 'work' ? 'text-himalaya-gold' : 'text-emerald-400'}`}>
+                {mode === 'work' ? '专注创作 ལས་ཀ།' : '静心休憩 ངལ་གསོ།'}
+             </span>
+             <div className="text-xl font-mono font-bold tracking-tighter w-16 text-center">
+                {formatTime(timeLeft)}
+             </div>
+          </div>
+          
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={toggleTimer} 
+              className={`p-2 rounded-lg transition-all ${isActive ? 'bg-white/10 text-white' : 'bg-himalaya-gold text-himalaya-red'}`}
+              title={isActive ? "暂停" : "开始"}
+            >
+              {isActive ? <Pause size={16} /> : <Play size={16} fill="currentColor" />}
+            </button>
+            <button 
+              onClick={switchMode} 
+              className="p-2 hover:bg-white/10 rounded-lg text-himalaya-gold transition-colors"
+              title="切换模式"
+            >
+              {mode === 'work' ? <Coffee size={16} /> : <Pen size={16} />}
+            </button>
+            <button 
+              onClick={resetTimer} 
+              className="p-2 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors"
+              title="重置"
+            >
+              <RotateCcw size={14} />
+            </button>
+          </div>
+          
+          {/* 进度条提示 */}
+          <div className="w-24 h-1 bg-white/10 rounded-full overflow-hidden hidden lg:block">
+            <div 
+              className={`h-full transition-all duration-1000 ${mode === 'work' ? 'bg-himalaya-gold' : 'bg-emerald-400'}`}
+              style={{ width: `${(timeLeft / (mode === 'work' ? 25 * 60 : 5 * 60)) * 100}%` }}
+            />
+          </div>
+        </div>
         
+        {/* 右侧：功能按钮 */}
         <div className="flex items-center gap-1 md:gap-3">
           <button
             onClick={onToggleWorkshop}
             className="p-2 md:px-4 md:py-2 hover:bg-white/10 rounded-xl transition-all flex items-center gap-2 group"
-            title="创作研讨"
           >
             <Lightbulb className="w-5 h-5 text-himalaya-gold group-hover:scale-110 transition-transform" />
             <span className="hidden md:inline text-[10px] font-bold uppercase tracking-widest">研讨会</span>
@@ -53,7 +142,6 @@ const Header: React.FC<HeaderProps> = ({ onReset, onToggleMemory, onToggleWorksh
           <button
             onClick={onToggleMemory}
             className="p-2 md:px-4 md:py-2 hover:bg-white/10 rounded-xl transition-all flex items-center gap-2 group"
-            title="作品记忆"
           >
             <BrainCircuit className="w-5 h-5 text-himalaya-gold group-hover:scale-110 transition-transform" />
             <span className="hidden md:inline text-[10px] font-bold uppercase tracking-widest">记忆库</span>
@@ -64,7 +152,6 @@ const Header: React.FC<HeaderProps> = ({ onReset, onToggleMemory, onToggleWorksh
           <button
             onClick={onReset}
             className="p-2 hover:bg-white/10 rounded-xl transition-all group"
-            title="重置创作"
           >
             <RefreshCcw className="w-5 h-5 text-himalaya-gold group-hover:rotate-180 transition-transform duration-700" />
           </button>

@@ -60,15 +60,35 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
       if (match.index > lastIndex) parts.push(applyHighlighting(mainText.substring(lastIndex, match.index)));
       const type = match[1].toLowerCase();
       const text = match[2];
-      let bgColor = "bg-gray-100";
+      
+      let bgColor = "bg-gray-200/50";
+      let borderColor = "border-gray-300";
       let label = "系统";
-      if (type === 'polish') { bgColor = "bg-yellow-50"; label = "润色"; }
-      else if (type === 'expand') { bgColor = "bg-green-50"; label = "扩写"; }
-      else if (type === 'citation') { bgColor = "bg-himalaya-red/5"; label = "引用"; }
+      
+      if (type === 'polish') { 
+        bgColor = "bg-yellow-200/40"; 
+        borderColor = "border-yellow-400/50";
+        label = "润色"; 
+      }
+      else if (type === 'expand') { 
+        bgColor = "bg-green-200/40"; 
+        borderColor = "border-green-400/50";
+        label = "扩写"; 
+      }
+      else if (type === 'modify') { 
+        bgColor = "bg-blue-200/40"; 
+        borderColor = "border-blue-400/50";
+        label = "修改"; 
+      }
+      else if (type === 'citation') { 
+        bgColor = "bg-purple-200/40"; 
+        borderColor = "border-purple-400/50";
+        label = "引用"; 
+      }
 
       parts.push(
-        <span key={match.index} className={`inline-block px-2 py-0.5 mx-0.5 rounded border ${bgColor} text-xs font-medium shadow-sm`}>
-          <span className="opacity-40 mr-1 text-[8px] font-bold uppercase">{label}</span>
+        <span key={match.index} className={`inline-block px-2 py-0.5 mx-0.5 rounded-lg border-b-2 ${bgColor} ${borderColor} transition-colors hover:brightness-95`}>
+          <span className="opacity-60 mr-1.5 text-[9px] font-bold uppercase tracking-tighter">{label}</span>
           {applyHighlighting(text)}
         </span>
       );
@@ -82,7 +102,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           {parts.length > 0 ? parts : applyHighlighting(mainText)}
         </div>
         
-        {/* 搜索结果显示区 - 彻底拉满单列展示 */}
         {message.groundingChunks && message.groundingChunks.length > 0 && (
           <div className="mt-12 pt-8 border-t border-gray-100 w-full">
             <div className="flex items-center gap-4 mb-6 text-sm font-bold text-himalaya-gold uppercase tracking-[0.3em]">

@@ -39,10 +39,11 @@ PROSE QUALITY & STRUCTURE:
 
 ${memoryContext}
 
-COLOR-CODED NARRATIVE MARKS (Use these within the prose):
-- <mark type="polish">...</mark>: For enhanced vocabulary/imagery.
-- <mark type="expand">...</mark>: For newly added scenes or sensory descriptions.
-- <mark type="citation">...</mark>: For callbacks to earlier plot points.
+COLOR-CODED NARRATIVE MARKS (Crucial for user feedback):
+- <mark type="polish">...</mark>: For word-level improvements, elevated vocabulary, and better imagery (Highlighted Yellow).
+- <mark type="expand">...</mark>: For substantial new sections, added sensory details, or expanded dialogue (Highlighted Green).
+- <mark type="modify">...</mark>: For structural changes, significant rephrasing, or logical corrections (Highlighted Blue).
+- <mark type="citation">...</mark>: For callbacks to earlier plot points or canon facts.
 
 REQUIRED RESPONSE FOOTER (AFTER THE PROSE):
 1. ---
@@ -95,7 +96,6 @@ export const sendMessageStream = async (
 };
 
 export const parseMemoryUpdate = (text: string): Partial<ProjectMemory> | null => {
-  // Robust line-by-line matching for continuity updates
   const projectMatch = text.match(/Project:\s*([^\n]+)/i);
   const styleMatch = text.match(/Style:\s*([^\n]+)/i);
   const chapterMatch = text.match(/Chapter:\s*([^\n]+)/i);
