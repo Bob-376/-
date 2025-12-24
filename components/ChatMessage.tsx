@@ -1,23 +1,27 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+
+import React, { useState } from 'react';
 import { Message } from '../types';
-import { Bot, User, Hash, Copy, Check, Clock, Pencil, X, Save, CornerDownLeft, ExternalLink, Library, History, Pin, PinOff, Languages, ChevronRight, Info, Lightbulb, TrendingUp, Sparkles, Feather, Book, Quote, FileText, BookmarkCheck, ScrollText, Layers, PenTool } from 'lucide-react';
+import { Bot, User, Copy, Check, Clock, Pin, PinOff, Trash2, ExternalLink } from 'lucide-react';
 
 interface ChatMessageProps {
   message: Message;
   onEditSubmit?: (text: string, id: string) => void;
   onReaction?: (messageId: string, emoji: string) => void;
   onTogglePin?: (id: string) => void;
-  onTranslate?: (text: string, targetLang: string) => void;
+  onDelete?: (id: string) => void;
   disabled?: boolean;
   highlightQuery?: string;
   isPinned?: boolean;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEditSubmit, onReaction, onTogglePin, onTranslate, disabled, highlightQuery, isPinned }) => {
+const ChatMessage: React.FC<ChatMessageProps> = ({ 
+  message, 
+  onTogglePin, 
+  onDelete,
+  highlightQuery, 
+  isPinned 
+}) => {
   const [copied, setCopied] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editText, setEditText] = useState(message.text);
-  
   const isUser = message.role === 'user';
 
   const handleCopy = async () => {
@@ -28,248 +32,107 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEditSubmit, onReac
     } catch (err) { console.error(err); }
   };
 
-  const handleEditStart = () => {
-    setEditText(message.text);
-    setIsEditing(true);
-  };
-
   const renderContent = (content: string) => {
-    const metricsMatch = content.match(/Word\/Character Count Delta:?\s*([+-]?\d+)/i);
-    const finalCountMatch = content.match(/Final Article Character Count:?\s*(\d+)/i);
-    const adviceMatch = content.match(/CREATIVE ADVICE:([\s\S]*?)(?=\n\n|\n[A-Z]|$)/i) || content.match(/Creative Advice\s*\(创作建议\):?([\s\S]*)$/i);
-    
+    const applyHighlighting = (text: string) => {
+      if (!highlightQuery || highlightQuery.length < 2) return text;
+      try {
+        const regex = new RegExp(`(${highlightQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        return text.split(regex).map((segment, i) => regex.test(segment) ? (
+          <span key={i} className="bg-himalaya-gold/30 border-b-2 border-himalaya-gold/50 rounded-sm px-0.5 font-bold">{segment}</span>
+        ) : segment);
+      } catch (e) { return text; }
+    };
+
     let mainText = content;
     let metaText = "";
     if (content.includes('---')) {
       const partsArr = content.split('---');
-      mainText = partsArr[0];
-      metaText = partsArr.slice(1).join('---');
+      mainText = partsArr[0].trim();
+      metaText = partsArr.slice(1).join('---').trim();
     }
 
     const markRegex = /<mark\s+type="([^"]+)">([\s\S]*?)<\/mark>/gi;
     const parts = [];
-    const citations: string[] = [];
     let lastIndex = 0;
     let match;
 
-    markRegex.lastIndex = 0;
-
     while ((match = markRegex.exec(mainText)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(mainText.substring(lastIndex, match.index));
-      }
-      
+      if (match.index > lastIndex) parts.push(applyHighlighting(mainText.substring(lastIndex, match.index)));
       const type = match[1].toLowerCase();
       const text = match[2];
-      
       let bgColor = "bg-gray-100";
-      let textColor = "text-gray-900";
-      let borderColor = "border-gray-300";
-      let label = "";
-
-      if (type === 'polish') {
-        bgColor = "bg-yellow-50/80";
-        textColor = "text-yellow-900";
-        borderColor = "border-yellow-200";
-        label = "润色";
-      } else if (type === 'expand') {
-        bgColor = "bg-green-50/80";
-        textColor = "text-green-900";
-        borderColor = "border-green-200";
-        label = "扩写";
-      } else if (type === 'modify') {
-        bgColor = "bg-blue-50/80";
-        textColor = "text-blue-900";
-        borderColor = "border-blue-200";
-        label = "修改";
-      } else if (type === 'citation') {
-        bgColor = "bg-himalaya-red/5";
-        textColor = "text-himalaya-red";
-        borderColor = "border-himalaya-red/20";
-        label = "引用";
-        citations.push(text);
-      }
+      let label = "系统";
+      if (type === 'polish') { bgColor = "bg-yellow-50"; label = "润色"; }
+      else if (type === 'expand') { bgColor = "bg-green-50"; label = "扩写"; }
+      else if (type === 'citation') { bgColor = "bg-himalaya-red/5"; label = "引用"; }
 
       parts.push(
-        <span key={match.index} className={`relative inline items-center px-1 rounded-md border-b-2 font-medium transition-all ${bgColor} ${textColor} ${borderColor}`}>
-          {text}
-          <span className="inline-block text-[7px] font-bold uppercase tracking-tighter opacity-40 ml-1 italic">{label}</span>
+        <span key={match.index} className={`inline-block px-2 py-0.5 mx-0.5 rounded border ${bgColor} text-xs font-medium shadow-sm`}>
+          <span className="opacity-40 mr-1 text-[8px] font-bold uppercase">{label}</span>
+          {applyHighlighting(text)}
         </span>
       );
-      
       lastIndex = markRegex.lastIndex;
     }
-    
-    if (lastIndex < mainText.length) {
-      parts.push(mainText.substring(lastIndex));
-    }
+    if (lastIndex < mainText.length) parts.push(applyHighlighting(mainText.substring(lastIndex)));
 
     return (
       <div className="space-y-6">
-        <div className="whitespace-pre-wrap break-words leading-relaxed font-tibetan text-xl text-himalaya-dark/90">
-          {parts.length > 0 ? parts : mainText}
+        <div className={`prose prose-sm max-w-none whitespace-pre-wrap leading-relaxed font-tibetan ${mainText.length > 500 ? 'text-2xl md:text-3xl' : 'text-xl md:text-2xl'}`}>
+          {parts.length > 0 ? parts : applyHighlighting(mainText)}
         </div>
-
-        {/* Improved Sources Section */}
-        {!isUser && citations.length > 0 && (
-          <div className="mt-8 border-t border-himalaya-red/10 pt-6">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="bg-himalaya-red p-1.5 rounded-lg shadow-sm">
-                <ScrollText size={16} className="text-himalaya-gold" />
-              </div>
-              <h4 className="text-sm font-bold text-himalaya-red uppercase tracking-[0.2em]">
-                Sources (文献引用)
-              </h4>
-            </div>
-            
-            <div className="grid grid-cols-1 gap-3">
-              {citations.map((cite, idx) => {
-                const parts = cite.split(':');
-                const source = parts[0].trim();
-                const quote = parts.slice(1).join(':').trim();
-                
-                return (
-                  <div key={idx} className="group relative bg-white border border-himalaya-red/10 p-4 rounded-2xl shadow-sm hover:shadow-md hover:border-himalaya-red/30 transition-all">
-                    <div className="flex items-start gap-3">
-                      <Quote size={18} className="text-himalaya-gold flex-shrink-0 mt-1 opacity-50" />
-                      <div className="space-y-1.5">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-himalaya-red/60">
-                          {source}
-                        </span>
-                        {quote ? (
-                          <p className="text-sm md:text-base italic font-tibetan text-himalaya-dark/80 leading-relaxed">
-                            "{quote}"
-                          </p>
-                        ) : (
-                          <p className="text-sm font-tibetan text-himalaya-dark/80 italic">引用内容已整合进正文</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Reference Links from Google Search */}
+        
+        {/* 搜索结果显示区 - 彻底拉满单列展示 */}
         {message.groundingChunks && message.groundingChunks.length > 0 && (
-          <div className="p-3 bg-blue-50/40 border border-blue-100 rounded-2xl">
-            <div className="flex items-center gap-2 mb-2 text-[10px] font-bold text-blue-500 uppercase tracking-widest">
-              <ExternalLink size={12} />
-              Web Grounding
+          <div className="mt-12 pt-8 border-t border-gray-100 w-full">
+            <div className="flex items-center gap-4 mb-6 text-sm font-bold text-himalaya-gold uppercase tracking-[0.3em]">
+              <ExternalLink size={18} /> 文献参考与搜索来源 (Master Sources)
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-3 w-full">
               {message.groundingChunks.map((chunk, idx) => chunk.web && (
-                <a 
-                  key={idx} 
-                  href={chunk.web.uri} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-1 bg-white border border-blue-100 rounded-full text-xs text-blue-600 hover:bg-blue-50 transition-all shadow-xs"
-                >
-                  <span className="max-w-[180px] truncate font-medium">{chunk.web.title}</span>
+                <a key={idx} href={chunk.web.uri} target="_blank" rel="noopener noreferrer" className="flex items-center gap-6 p-6 bg-gray-50 hover:bg-white hover:shadow-xl hover:border-himalaya-gold/40 border border-gray-100 rounded-3xl transition-all group/link w-full">
+                  <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-md text-himalaya-gold group-hover/link:bg-himalaya-gold group-hover/link:text-white transition-all font-bold text-xl shrink-0">
+                    {idx + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xl font-bold text-gray-800 truncate mb-1">{chunk.web.title}</div>
+                    <div className="text-sm text-gray-400 truncate font-sans tracking-tight">{chunk.web.uri}</div>
+                  </div>
+                  <ExternalLink size={20} className="text-gray-200 group-hover/link:text-himalaya-gold transition-colors shrink-0" />
                 </a>
               ))}
             </div>
           </div>
         )}
 
-        {/* Stats & Meta Footer */}
-        {(!isUser && (finalCountMatch || metricsMatch || content.includes('说明') || adviceMatch)) && (
-          <div className="border-t border-himalaya-gold/20 pt-6 mt-8 space-y-6">
-            <div className="flex flex-wrap gap-3">
-              {finalCountMatch && (
-                <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-himalaya-dark text-white text-[10px] font-bold uppercase shadow-md">
-                  <FileText size={12} className="text-himalaya-gold" />
-                  正文字数: {finalCountMatch[1]} 字符
-                </div>
-              )}
-              {metaText && (
-                <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-himalaya-cream border border-himalaya-gold/30 text-himalaya-gold text-[10px] font-bold uppercase shadow-sm">
-                  <Layers size={12} />
-                  说明/元数据: {metaText.length} 字符
-                </div>
-              )}
-              {metricsMatch && (
-                <div className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[10px] font-bold border ${parseInt(metricsMatch[1]) >= 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
-                  <TrendingUp size={12} />
-                  {parseInt(metricsMatch[1]) >= 0 ? '内容增长' : '内容精简'}: {metricsMatch[1]}
-                </div>
-              )}
-            </div>
-
-            {/* Creative Advice Section */}
-            {adviceMatch && (
-              <div className="p-6 rounded-[2.5rem] bg-gradient-to-br from-himalaya-gold/5 to-transparent border border-himalaya-gold/20 shadow-inner relative overflow-hidden group">
-                <div className="absolute top-0 right-0 p-4 opacity-5 transform group-hover:scale-110 transition-transform">
-                  <PenTool size={64} className="text-himalaya-gold" />
-                </div>
-                <div className="flex items-center gap-2 mb-4 text-himalaya-red font-bold text-xs uppercase tracking-[0.2em] relative z-10">
-                  <Lightbulb size={18} className="text-himalaya-gold animate-pulse" />
-                  <span>Creative Advice (创作研讨)</span>
-                </div>
-                <div className="text-sm md:text-base text-himalaya-dark/80 font-tibetan leading-relaxed italic relative z-10 whitespace-pre-wrap">
-                  {adviceMatch[1].trim()}
-                </div>
-              </div>
-            )}
-
-            {content.includes('说明') && (
-               <div className="p-5 rounded-3xl bg-himalaya-cream/50 border border-himalaya-gold/10 text-sm text-himalaya-dark/60 font-tibetan italic leading-relaxed">
-                  <div className="flex items-center gap-2 mb-2 font-bold text-[10px] uppercase tracking-[0.2em] text-himalaya-gold/80">
-                    <Info size={14} /> Context & Continuity
-                  </div>
-                  {content.split('---')[1]?.split(/Final Article Character Count|Word\/Character Count Delta|CREATIVE ADVICE/i)[0]?.trim()}
-               </div>
-            )}
-          </div>
-        )}
+        {metaText && <div className="mt-8 pt-6 border-t border-gray-100 text-sm text-gray-400 font-sans italic opacity-60 tracking-wide">{metaText}</div>}
       </div>
     );
   };
 
-  const isThinking = !isUser && message.isStreaming && message.text === '';
-
   return (
-    <div className={`flex w-full mb-10 ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`group flex max-w-[95%] md:max-w-[85%] ${isUser ? 'flex-row-reverse' : 'flex-row'} items-start gap-5`}>
-        <div className={`flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center shadow-xl border-2 transform transition-transform group-hover:scale-105 ${isUser ? 'bg-slate-700 text-white border-slate-500' : 'bg-himalaya-red text-himalaya-gold border-himalaya-gold'}`}>
-          {isUser ? <User size={24} /> : <Feather size={24} />}
+    <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-16 group animate-in fade-in slide-in-from-bottom-2`}>
+      <div className={`flex items-start gap-8 w-full ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+        <div className={`flex-shrink-0 w-16 h-16 rounded-[1.5rem] flex items-center justify-center shadow-2xl border-2 ${isUser ? 'bg-himalaya-gold border-himalaya-red/20' : 'bg-himalaya-red border-himalaya-gold'}`}>
+          {isUser ? <User className="text-himalaya-red w-10 h-10" /> : <Bot className="text-himalaya-gold w-10 h-10" />}
         </div>
-
-        <div className="flex flex-col relative w-full">
-          <div className={`relative flex flex-col px-7 py-6 rounded-[2rem] shadow-sm text-base md:text-lg leading-relaxed transition-all duration-300 ${isUser ? 'bg-white text-himalaya-dark border border-gray-200 rounded-tr-none' : 'bg-white/95 backdrop-blur-md text-himalaya-dark border border-himalaya-red/5 rounded-tl-none'}`}>
-            {!isEditing && (
-              <div className={`absolute top-3 flex gap-1 opacity-0 group-hover:opacity-100 z-10 transition-opacity ${isUser ? 'left-3' : 'right-3'}`}>
-                <button onClick={handleCopy} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-himalaya-red">{copied ? <Check size={16} className="text-green-600" /> : <Copy size={16} />}</button>
-                <button onClick={() => onTogglePin?.(message.id)} className={`p-2 rounded-xl hover:bg-gray-100 ${isPinned ? 'text-himalaya-gold' : 'text-gray-400'}`}><Pin size={16} /></button>
-                {isUser && onEditSubmit && !disabled && <button onClick={handleEditStart} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-himalaya-red"><Pencil size={16} /></button>}
+        <div className="flex flex-col gap-3 flex-1 min-w-0">
+          <div className={`relative p-10 md:p-14 rounded-[4rem] shadow-2xl border transition-all ${isUser ? 'bg-himalaya-gold text-himalaya-dark rounded-tr-none' : 'bg-white text-himalaya-dark rounded-tl-none border-gray-100'}`}>
+            <div className="flex justify-between items-center gap-6 mb-10">
+              <span className={`text-xs font-bold uppercase tracking-[0.4em] opacity-40 ${isUser ? 'text-himalaya-dark' : 'text-himalaya-red'}`}>
+                {isUser ? '作者手稿' : '文坛宗师'}
+              </span>
+              <div className="flex items-center gap-3">
+                <button onClick={handleCopy} className="p-3 hover:bg-black/5 rounded-2xl transition-colors">{copied ? <Check size={20} className="text-emerald-600" /> : <Copy size={20} className="opacity-30" />}</button>
+                <button onClick={() => onTogglePin?.(message.id)} className={`p-3 hover:bg-black/5 rounded-2xl transition-colors ${isPinned ? 'text-himalaya-gold' : ''}`}>{isPinned ? <PinOff size={20} /> : <Pin size={20} className="opacity-30" />}</button>
+                {onDelete && message.id !== 'welcome' && <button onClick={() => onDelete(message.id)} className="p-3 hover:bg-himalaya-red/10 text-himalaya-red rounded-2xl transition-colors"><Trash2 size={20} className="opacity-30" /></button>}
               </div>
-            )}
-
-            {isThinking ? (
-              <div className="flex items-center gap-2 py-6">
-                <div className="w-3 h-3 bg-himalaya-red rounded-full animate-typing-dot"></div>
-                <div className="w-3 h-3 bg-himalaya-red rounded-full animate-typing-dot delay-200"></div>
-                <div className="w-3 h-3 bg-himalaya-red rounded-full animate-typing-dot delay-400"></div>
-              </div>
-            ) : isEditing ? (
-              <div className="flex flex-col gap-4">
-                <textarea className="w-full bg-himalaya-cream/30 border-2 border-gray-200 focus:border-himalaya-red rounded-3xl p-5 text-base md:text-lg resize-none min-h-[200px]" value={editText} onChange={(e) => setEditText(e.target.value)} />
-                <div className="flex justify-end gap-3">
-                  <button onClick={() => setIsEditing(false)} className="px-5 py-2 text-xs font-bold text-gray-400 uppercase tracking-widest">Cancel</button>
-                  <button onClick={() => { onEditSubmit?.(editText, message.id); setIsEditing(false); }} className="px-8 py-2 bg-himalaya-red text-white rounded-xl text-xs font-bold uppercase shadow-xl hover:bg-red-900 transition-colors">Save Changes</button>
-                </div>
-              </div>
-            ) : (
-              renderContent(message.text)
-            )}
-
-            <div className={`mt-5 flex items-center gap-4 text-[10px] font-bold uppercase tracking-[0.15em] opacity-30 ${isUser ? 'justify-end' : 'justify-start'}`}>
-               <div className="flex items-center gap-1.5"><Clock size={12} /><span>{new Date(message.timestamp).toLocaleTimeString()}</span></div>
-               <div className="flex items-center gap-1.5" title={`Main: ${message.text.split('---')[0].length} | Meta: ${message.text.includes('---') ? message.text.split('---').slice(1).join('---').length : 0}`}><Hash size={12} /><span>{message.text.length} Chars</span></div>
             </div>
+            {renderContent(message.text)}
+          </div>
+          <div className={`flex items-center gap-5 px-8 text-[11px] font-bold text-gray-400 uppercase tracking-widest ${isUser ? 'justify-end' : 'justify-start'}`}>
+             <Clock size={14} /> {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+             {message.isStreaming && <div className="text-himalaya-red animate-pulse">宗师泼墨中...</div>}
           </div>
         </div>
       </div>

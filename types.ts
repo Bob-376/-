@@ -19,6 +19,7 @@ export interface Message {
 }
 
 export interface ProjectMemory {
+  projectName: string;
   styleProfile: string;
   narrativeProgress: string;
   keyCitations: string[];
