@@ -18,6 +18,11 @@ export interface Message {
   isPinned?: boolean;
 }
 
+export interface LookupResult {
+  text: string;
+  groundingChunks?: GroundingChunk[];
+}
+
 export interface ProjectMemory {
   projectName: string;
   styleProfile: string;
