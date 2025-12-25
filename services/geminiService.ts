@@ -95,29 +95,31 @@ export const sendMessageToSession = async (
 export const quickExplain = async (text: string, type: 'explain' | 'translate'): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  const prompt = type === 'explain' 
-    ? `Analyze the following Tibetan text: "${text}".
-       You must provide a dual-language scholarly response.
-       
-       MANDATORY STRUCTURE:
-       ---TIBETAN_COMMENTARY---
-       [Write a profound, scholarly, and beautiful explanation entirely in formal literary Tibetan here. Use honorifics and philological depth.]
-       
-       ---CHINESE_TRANSLATION---
-       [Provide an elegant, literary Simplified Chinese translation that captures the spiritual essence of the original.]
-       
-       Rules:
-       - No other text outside these markers.
-       - Tibetan commentary must be exhaustive and first.`
-    : `Translate the following text into elegant, literary Simplified Chinese: "${text}". 
-       If the source is Tibetan, include a brief context line in formal Tibetan first.`;
+  const prompt = `You are a world-renowned philologist of the Tibetan Plateau. 
+Analyze the provided segment: "${text}".
+
+MANDATORY TRILINGUAL SCHOLARLY RESPONSE STRUCTURE:
+
+---TIBETAN_COMMENTARY---
+[Priority 1: Write an exhaustive, profound, and high-literary Tibetan commentary. Use honorifics and discuss the etymological and philosophical depth of the chosen words.]
+
+---CHINESE_TRANSLATION---
+[Priority 2: Provide an elegant, literary Simplified Chinese translation that captures the spiritual weight of the original.]
+
+---ENGLISH_TRANSLATION---
+[Priority 3: Provide a precise English translation with a brief note on grammatical or historical context.]
+
+RULES:
+- Start with the Tibetan section. It must be the most substantial.
+- Do not use any other headers or conversational fillers.
+- Adhere strictly to the markers for UI parsing.`;
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
-        systemInstruction: "You are a world-class scholar of Tibetan studies and philology. Your primary mode of communication is high literary Tibetan, followed by precise Chinese translation.",
+        systemInstruction: "You are the 'Imperial Scholar'. Your communication is trilingual, always prioritizing the profound beauty of literary Tibetan above all else.",
         maxOutputTokens: 2048
       }
     });
@@ -129,5 +131,5 @@ export const quickExplain = async (text: string, type: 'explain' | 'translate'):
 };
 
 export const resetChat = () => {
-  // Logic handled by re-instantiation.
+  // Reset logic is now handled by re-instantiating in the functions above.
 };

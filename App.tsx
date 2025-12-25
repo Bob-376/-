@@ -3,7 +3,8 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { 
   Loader2, Feather, RotateCcw, Plus, Minus, AlertCircle, PenTool, X, MoveRight, 
   Key, Flame, Minimize2, Stars, Maximize, Languages, Info, Search,
-  Trophy, BarChart3, Milestone, BrainCircuit, Compass, Pen, Maximize2, RefreshCw, Sparkles
+  Trophy, BarChart3, Milestone, BrainCircuit, Compass, Pen, Maximize2, RefreshCw, Sparkles,
+  BookOpen, Quote
 } from 'lucide-react';
 import Header from './components/Header';
 import ChatMessage from './components/ChatMessage';
@@ -13,6 +14,7 @@ import { sendMessageToSession, quickExplain } from './services/geminiService';
 const STORAGE_KEY_MESSAGES = 'himalaya_v2_messages';
 const STORAGE_KEY_POS = 'himalaya_ws_pos';
 const STORAGE_KEY_SIZE = 'himalaya_ws_size';
+const STORAGE_KEY_DRAFT = 'himalaya_workshop_draft';
 const EPIC_GOAL_CHARACTERS = 50000;
 
 declare global {
@@ -42,6 +44,7 @@ const App: React.FC = () => {
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
 
+  // Selection/Explanation state
   const [selection, setSelection] = useState<{ text: string, x: number, y: number, isInsideWorkshop: boolean } | null>(null);
   const [explanation, setExplanation] = useState<{ text: string, loading: boolean } | null>(null);
 
@@ -72,6 +75,22 @@ const App: React.FC = () => {
     checkKey();
   }, []);
 
+  // Restore draft on mount
+  useEffect(() => {
+    const savedDraft = localStorage.getItem(STORAGE_KEY_DRAFT);
+    if (savedDraft && editorRef.current) {
+      editorRef.current.innerHTML = savedDraft;
+      setInputText(editorRef.current.innerText);
+    }
+  }, []);
+
+  // Save draft on change
+  useEffect(() => {
+    if (editorRef.current) {
+      localStorage.setItem(STORAGE_KEY_DRAFT, editorRef.current.innerHTML);
+    }
+  }, [inputText]);
+
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_MESSAGES, JSON.stringify(messages));
     if (!isMaximized) {
@@ -90,11 +109,13 @@ const App: React.FC = () => {
 
   const handleTextSelection = useCallback((e: MouseEvent) => {
     const sel = window.getSelection();
+    const target = e.target as HTMLElement;
+
+    // If text is selected, show the selection toolbar
     if (sel && sel.toString().trim().length > 0) {
       try {
         const range = sel.getRangeAt(0);
         const rect = range.getBoundingClientRect();
-        const target = e.target as HTMLElement;
         const isInsideWorkshop = !!target.closest('#scribe-editor');
 
         if (rect.width > 0 && rect.height > 0) {
@@ -107,13 +128,16 @@ const App: React.FC = () => {
         }
       } catch (err) {}
     } else {
-      const target = e.target as HTMLElement;
-      if (!target.closest('.explanation-bubble') && !target.closest('#workshop-toolbar-research')) {
-        setSelection(null);
-        setExplanation(null);
+      // If no text is selected:
+      // 1. If we are NOT showing an explanation, hide the selection bubble on any click outside
+      // 2. If we ARE showing an explanation, DO NOT hide it automatically (requires manual close)
+      if (!explanation) {
+        if (!target.closest('.explanation-bubble') && !target.closest('#workshop-toolbar-research')) {
+          setSelection(null);
+        }
       }
     }
-  }, []);
+  }, [explanation]);
 
   useEffect(() => {
     document.addEventListener('mouseup', handleTextSelection);
@@ -144,13 +168,14 @@ const App: React.FC = () => {
 
     // Detect structured sections
     const tibetanMatch = text.match(/---TIBETAN_COMMENTARY---([\s\S]*?)(?=---CHINESE_TRANSLATION---|$)/);
-    const chineseMatch = text.match(/---CHINESE_TRANSLATION---([\s\S]*?)$/);
+    const chineseMatch = text.match(/---CHINESE_TRANSLATION---([\s\S]*?)(?=---ENGLISH_TRANSLATION---|$)/);
+    const englishMatch = text.match(/---ENGLISH_TRANSLATION---([\s\S]*?)$/);
 
     const tibContent = tibetanMatch ? tibetanMatch[1].trim() : null;
     const chiContent = chineseMatch ? chineseMatch[1].trim() : null;
+    const engContent = englishMatch ? englishMatch[1].trim() : null;
 
-    if (!tibContent && !chiContent) {
-      // Fallback to naive splitting if markers are missing
+    if (!tibContent && !chiContent && !engContent) {
       const segments = text.split(/([\u0F00-\u0FFF\s་]+)/g);
       return segments.map((s, i) => {
         if (!s) return null;
@@ -164,30 +189,50 @@ const App: React.FC = () => {
     }
 
     return (
-      <div className="space-y-8">
+      <div className="space-y-12">
         {tibContent && (
-          <div className="animate-in fade-in slide-in-from-top-2 duration-500">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="h-px flex-1 bg-himalaya-gold/20" />
-              <span className="text-[10px] font-black text-himalaya-gold uppercase tracking-[0.2em]">གསུང་བཤད་研注</span>
-              <div className="h-px flex-1 bg-himalaya-gold/20" />
+          <div className="animate-in fade-in slide-in-from-top-4 duration-700">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-himalaya-gold/40 to-transparent" />
+              <span className="text-[12px] font-black text-himalaya-red uppercase tracking-[0.4em] flex items-center gap-3">
+                <Sparkles size={14} className="text-himalaya-gold animate-pulse" /> བོད་ཡིག་འགྲེལ་བཤད། 宗师研注
+              </span>
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-himalaya-gold/40 to-transparent" />
             </div>
-            <p className="text-3xl font-tibetan leading-[2] text-himalaya-dark">
-              {tibContent}
-            </p>
+            <div className="relative group">
+              <Quote className="absolute -top-4 -left-6 text-himalaya-gold/10 w-16 h-16 pointer-events-none" />
+              <p className="text-4xl font-tibetan leading-[2.2] text-himalaya-dark drop-shadow-sm text-justify">
+                {tibContent}
+              </p>
+            </div>
           </div>
         )}
-        {chiContent && (
-          <div className="pt-4 border-t border-himalaya-gold/5 animate-in fade-in slide-in-from-bottom-2 duration-700">
-            <div className="flex items-center gap-2 mb-3 opacity-30">
-              <div className="h-px w-4 bg-himalaya-dark" />
-              <span className="text-[10px] font-bold text-himalaya-dark uppercase tracking-widest">汉译 Rendering</span>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 pt-10 border-t border-himalaya-gold/15">
+          {chiContent && (
+            <div className="animate-in fade-in slide-in-from-left-4 duration-1000">
+              <div className="flex items-center gap-3 mb-5 opacity-40">
+                <div className="h-px w-8 bg-himalaya-dark" />
+                <span className="text-[11px] font-bold text-himalaya-dark uppercase tracking-[0.2em]">汉译 Rendering</span>
+              </div>
+              <p className="text-xl font-serif italic text-himalaya-dark/90 leading-relaxed indent-10 text-justify">
+                {chiContent}
+              </p>
             </div>
-            <p className="text-base font-serif italic text-himalaya-dark opacity-80 leading-relaxed">
-              {chiContent}
-            </p>
-          </div>
-        )}
+          )}
+          
+          {engContent && (
+            <div className="animate-in fade-in slide-in-from-right-4 duration-1000">
+              <div className="flex items-center gap-3 mb-5 opacity-40">
+                <div className="h-px w-8 bg-himalaya-dark" />
+                <span className="text-[11px] font-bold text-himalaya-dark uppercase tracking-[0.2em]">Philological Note</span>
+              </div>
+              <p className="text-base font-sans italic text-himalaya-dark/70 leading-relaxed text-justify">
+                {engContent}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -201,6 +246,7 @@ const App: React.FC = () => {
         timestamp: Date.now() 
       }]);
       localStorage.removeItem(STORAGE_KEY_MESSAGES);
+      localStorage.removeItem(STORAGE_KEY_DRAFT);
       setInputText("");
       if (editorRef.current) editorRef.current.innerHTML = "";
       setError(null);
@@ -294,6 +340,7 @@ const App: React.FC = () => {
       editorRef.current.innerHTML = '';
       setInputText("");
       setError(null);
+      localStorage.removeItem(STORAGE_KEY_DRAFT);
     }
     
     setIsLoading(true);
@@ -428,7 +475,7 @@ const App: React.FC = () => {
                    </div>
                    <div className="bg-himalaya-cream p-4 rounded-2xl border border-himalaya-gold/10 text-center">
                       <div className="text-xl font-black text-himalaya-dark">{Math.floor((totalCharacters/EPIC_GOAL_CHARACTERS)*100)}%</div>
-                      <div className="text-[8px] font-bold text-gray-400 uppercase">进度</div>
+                      <div className="text-[8px] font-bold text-gray-300 uppercase tracking-widest">Progress</div>
                    </div>
                 </div>
                 <div className="flex justify-end">
@@ -447,46 +494,50 @@ const App: React.FC = () => {
         >
           {!explanation && (
             <div className="flex items-center gap-1 bg-himalaya-dark text-white p-1 rounded-xl shadow-2xl border border-white/20">
-              <button onClick={() => handleExplain('explain')} className="flex items-center gap-2 px-3 py-1 hover:bg-white/10 rounded-lg text-[9px] font-bold uppercase tracking-widest border-r border-white/10">
-                <Sparkles size={12} className="text-himalaya-gold" />
-                <span>研注</span>
+              <button onClick={() => handleExplain('explain')} className="flex items-center gap-2 px-3 py-1 hover:bg-white/10 rounded-lg text-[10px] font-black uppercase tracking-[0.2em] border-r border-white/10">
+                <Sparkles size={13} className="text-himalaya-gold" />
+                <span>研注 Analysis</span>
               </button>
-              <button onClick={() => handleExplain('translate')} className="flex items-center gap-2 px-3 py-1 hover:bg-white/10 rounded-lg text-[9px] font-bold uppercase tracking-widest">
-                <Languages size={12} className="text-himalaya-gold" />
+              <button onClick={() => handleExplain('translate')} className="flex items-center gap-2 px-3 py-1 hover:bg-white/10 rounded-lg text-[10px] font-black uppercase tracking-[0.2em]">
+                <Languages size={13} className="text-himalaya-gold" />
                 <span>翻译</span>
               </button>
             </div>
           )}
           {explanation && (
-            <div className="mt-2 w-[32rem] bg-white border-2 border-himalaya-gold rounded-[2.5rem] shadow-2xl p-8 animate-in zoom-in slide-in-from-top-4 duration-300">
-               <div className="flex justify-between items-center mb-6 pb-4 border-b border-himalaya-gold/10">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-himalaya-red flex items-center justify-center">
-                      <Sparkles size={16} className="text-himalaya-gold" />
-                    </div>
-                    <div>
-                      <span className="text-[12px] font-black text-himalaya-red uppercase tracking-[0.3em] block">宗师研注</span>
-                      <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">Imperial Analysis System</span>
-                    </div>
-                  </div>
-                  <button onClick={() => { setExplanation(null); setSelection(null); }} className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors">
-                    <X size={16} />
+            <div className="mt-2 w-[50rem] max-w-[95vw] bg-white border-4 border-himalaya-gold/40 rounded-[3.5rem] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.3)] p-12 animate-in zoom-in slide-in-from-top-4 duration-500 relative">
+               <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-himalaya-red text-himalaya-gold px-8 py-2 rounded-full border-4 border-himalaya-gold/40 shadow-xl flex items-center gap-3">
+                  <BookOpen size={18} />
+                  <span className="text-[12px] font-black uppercase tracking-[0.4em]">宗师秘传研注 · Trilingual Lexicon</span>
+               </div>
+               
+               <div className="flex justify-end mb-4">
+                  <button onClick={() => { setExplanation(null); setSelection(null); }} className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors group">
+                    <X size={24} className="text-gray-300 group-hover:text-himalaya-red" />
                   </button>
                </div>
-               <div className="overflow-y-auto max-h-[60vh] custom-scrollbar px-2">
+
+               <div className="overflow-y-auto max-h-[70vh] custom-scrollbar px-4">
                   {explanation.loading ? (
-                    <div className="flex flex-col items-center py-12 gap-4">
-                      <Loader2 className="animate-spin text-himalaya-red" size={32} />
+                    <div className="flex flex-col items-center py-24 gap-8">
+                      <div className="relative">
+                        <Loader2 className="animate-spin text-himalaya-red" size={48} />
+                        <Sparkles className="absolute -top-2 -right-2 text-himalaya-gold animate-bounce" size={16} />
+                      </div>
                       <div className="text-center">
-                        <span className="text-[10px] font-black uppercase text-himalaya-gold tracking-[0.2em] block mb-1">查阅秘典...</span>
-                        <span className="text-[8px] font-bold text-gray-300 uppercase tracking-widest">Consulting Forbidden Archives</span>
+                        <span className="text-[14px] font-black uppercase text-himalaya-gold tracking-[0.5em] block mb-2">正在翻阅三语秘典...</span>
+                        <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Consulting the Grand Trilingual Archives</span>
                       </div>
                     </div>
                   ) : (
-                    <div className="prose prose-sm max-w-none">
+                    <div className="prose prose-xl max-w-none">
                       {formatExplanationText(explanation.text)}
                     </div>
                   )}
+               </div>
+               <div className="mt-10 pt-6 border-t border-gray-100 flex justify-between items-center opacity-30">
+                  <span className="text-[8px] font-black text-gray-400 uppercase tracking-[0.5em]">Authored by the Grand Historian</span>
+                  <Sparkles size={16} className="text-himalaya-gold" />
                </div>
             </div>
           )}
@@ -496,10 +547,10 @@ const App: React.FC = () => {
       {/* Floating Continue Button */}
       {showContinueButton && (
         <div className="fixed bottom-12 left-12 pointer-events-auto">
-          <button onClick={handleManualContinue} className="flex items-center gap-3 px-4 py-2 bg-himalaya-red text-himalaya-gold rounded-xl font-bold shadow-xl border-2 border-himalaya-gold/20 text-xs">
-            <Flame size={14} />
+          <button onClick={handleManualContinue} className="flex items-center gap-3 px-5 py-3 bg-himalaya-red text-himalaya-gold rounded-2xl font-black shadow-2xl border-2 border-himalaya-gold/30 text-sm hover:scale-105 active:scale-95 transition-transform group">
+            <Flame size={18} className="group-hover:animate-pulse" />
             <span>接笔续写 མུ་མཐུད་དུ་བྲིས།</span>
-            <MoveRight size={14} />
+            <MoveRight size={18} />
           </button>
         </div>
       )}
@@ -508,37 +559,40 @@ const App: React.FC = () => {
       {isInputVisible && (
         <div 
           ref={workshopRef}
-          className={`fixed flex flex-col bg-white overflow-hidden ${isMaximized ? 'inset-0 !w-full !h-full border-0 z-[400]' : 'border-2 border-himalaya-gold/30 shadow-2xl rounded-[2.5rem] z-[400]'}`} 
+          className={`fixed flex flex-col bg-white overflow-hidden ${isMaximized ? 'inset-0 !w-full !h-full border-0 z-[400]' : 'border-2 border-himalaya-gold/30 shadow-[0_40px_80px_-15px_rgba(0,0,0,0.2)] rounded-[3rem] z-[400]'}`} 
           style={isMaximized ? {} : { width: `${wsSize.width}px`, height: `${wsSize.height}px`, left: `${wsPos.x}px`, top: `${wsPos.y}px` }}
         >
           <div 
             onMouseDown={(e) => { if (!isMaximized) setDragging({ startX: e.clientX, startY: e.clientY, initialX: wsPos.x, initialY: wsPos.y }); }} 
-            className="h-14 bg-gray-50/50 flex items-center justify-between px-6 cursor-grab active:cursor-grabbing shrink-0 border-b border-gray-100 relative"
+            className="h-16 bg-gray-50/50 flex items-center justify-between px-8 cursor-grab active:cursor-grabbing shrink-0 border-b border-gray-100 relative"
           >
             <div className="flex items-center shrink-0">
-              <div className="flex items-center gap-2">
-                <PenTool size={16} className="text-himalaya-red" />
-                <span className="text-sm font-black hidden sm:inline">史诗工坊</span>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-himalaya-red/10 flex items-center justify-center">
+                  <PenTool size={18} className="text-himalaya-red" />
+                </div>
+                <span className="text-sm font-black hidden sm:inline tracking-widest uppercase">史诗工坊 Scribe Workshop</span>
               </div>
               
-              <div className="flex items-center gap-1 ml-4 bg-white/80 px-2 py-0.5 rounded-lg border border-gray-200 shadow-sm">
+              <div className="flex items-center gap-1 ml-6 bg-white px-3 py-1 rounded-xl border border-gray-200 shadow-sm">
                 <button onClick={() => setFontSize(s => Math.max(10, s - 2))} className="p-1 text-gray-400 hover:text-himalaya-red transition-colors" title="减小字号">
-                  <Minus size={12} />
+                  <Minus size={14} />
                 </button>
-                <div className="min-w-[32px] text-center text-[10px] font-black text-himalaya-dark">{fontSize}px</div>
+                <div className="min-w-[40px] text-center text-xs font-black text-himalaya-dark">{fontSize}px</div>
                 <button onClick={() => setFontSize(s => Math.min(80, s + 2))} className="p-1 text-gray-400 hover:text-himalaya-red transition-colors" title="增大字号">
-                  <Plus size={12} />
+                  <Plus size={14} />
                 </button>
               </div>
 
+              {/* Research Button (Accessible when text selected in workshop) */}
               {selection?.isInsideWorkshop && !explanation && (
                 <button 
                   id="workshop-toolbar-research"
                   onClick={() => handleExplain('explain')}
-                  className="ml-4 flex items-center gap-2 px-4 py-1.5 bg-himalaya-red text-himalaya-gold rounded-xl border border-himalaya-gold/40 hover:brightness-110 transition-all shadow-lg animate-in fade-in slide-in-from-left-4"
+                  className="ml-8 flex items-center gap-3 px-6 py-2.5 bg-himalaya-red text-himalaya-gold rounded-2xl border-2 border-himalaya-gold/50 hover:scale-105 active:scale-95 transition-all shadow-2xl animate-in fade-in slide-in-from-left-6"
                 >
-                  <Sparkles size={14} className="text-himalaya-gold" />
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em]">研注并分析 Analysis</span>
+                  <Sparkles size={16} className="text-himalaya-gold animate-pulse" />
+                  <span className="text-[11px] font-black uppercase tracking-[0.3em]">研注 Analysis</span>
                 </button>
               )}
             </div>
@@ -547,49 +601,67 @@ const App: React.FC = () => {
                <button 
                   onClick={() => handleSend()} 
                   disabled={!inputText.trim() || isLoading}
-                  className={`h-9 px-6 rounded-xl flex items-center gap-2 shadow-md border-2 transition-all active:scale-95 ${isLoading ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-wait' : 'bg-himalaya-red text-himalaya-gold border-himalaya-gold hover:brightness-110'}`}
+                  className={`h-11 px-8 rounded-2xl flex items-center gap-3 shadow-xl border-2 transition-all active:scale-95 ${isLoading ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-wait' : 'bg-himalaya-red text-himalaya-gold border-himalaya-gold hover:brightness-110'}`}
                 >
-                  {isLoading ? <Loader2 className="animate-spin" size={14} /> : <Compass size={14} />}
-                  <span className="font-black text-xs">落笔</span>
+                  {isLoading ? <Loader2 className="animate-spin" size={18} /> : <Compass size={18} />}
+                  <span className="font-black text-sm uppercase tracking-widest">落笔 Scribe</span>
                 </button>
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
-              <button onClick={toggleNativeFullscreen} className="p-1.5 text-gray-400 hover:text-himalaya-dark" title="全屏模式">
-                <Maximize size={16} />
+              <button onClick={toggleNativeFullscreen} className="p-2 text-gray-400 hover:text-himalaya-dark rounded-lg hover:bg-white transition-colors" title="全屏模式">
+                <Maximize size={18} />
               </button>
-              <button onClick={() => setIsMaximized(!isMaximized)} className="p-1.5 text-gray-400 hover:text-himalaya-dark" title={isMaximized ? "退出最大化" : "最大化窗口"}>
-                {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              <button onClick={() => setIsMaximized(!isMaximized)} className="p-2 text-gray-400 hover:text-himalaya-dark rounded-lg hover:bg-white transition-colors" title={isMaximized ? "退出最大化" : "最大化窗口"}>
+                {isMaximized ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
               </button>
-              <button onClick={() => setIsInputVisible(false)} className="p-1.5 text-gray-400 hover:text-red-500" title="隐藏工坊"><X size={16} /></button>
+              <button onClick={() => setIsInputVisible(false)} className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors" title="隐藏工坊"><X size={18} /></button>
             </div>
           </div>
 
-          <div className="flex-1 overflow-hidden relative p-4">
+          <div className="flex-1 overflow-hidden relative p-6 bg-gradient-to-b from-white to-gray-50/30">
               <div 
                 id="scribe-editor"
                 ref={editorRef} 
                 contentEditable 
                 spellCheck="false" 
                 style={{ fontSize: `${fontSize}px` }} 
-                className="w-full h-full outline-none font-tibetan leading-[2] overflow-y-auto custom-scrollbar text-himalaya-dark px-4 pb-20" 
+                className="w-full h-full outline-none font-tibetan leading-[2.4] overflow-y-auto custom-scrollbar text-himalaya-dark px-8 pb-32 selection:bg-himalaya-gold/40 scroll-smooth text-justify" 
                 onInput={() => setInputText(editorRef.current?.innerText || "")}
               />
-              {!inputText && <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10 font-tibetan text-3xl">开始书写...</div>}
+              {!inputText && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-5 gap-6">
+                  <Pen size={120} />
+                  <div className="font-tibetan text-5xl">འབྲི་བཤེར་གནང་རོགས། 开始书写...</div>
+                </div>
+              )}
               
               {error && (
-                <div className="absolute bottom-6 right-6 z-[10] p-3 px-5 rounded-xl border border-red-100 bg-white shadow-xl text-red-600 text-xs max-w-xs animate-in slide-in-from-bottom-2">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                    <div className="flex-1">{error}</div>
+                <div className="absolute bottom-10 right-10 z-[10] p-4 px-6 rounded-[1.5rem] border border-red-100 bg-white shadow-2xl text-red-600 text-xs max-w-sm animate-in slide-in-from-bottom-4">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle size={18} className="mt-0.5 shrink-0" />
+                    <div className="flex-1 font-bold leading-relaxed">{error}</div>
                   </div>
                 </div>
               )}
           </div>
+          
+          {/* Resize handles */}
+          {!isMaximized && (
+            <>
+              <div onMouseDown={(e) => setResizing({ direction: 'se', startX: e.clientX, startY: e.clientY, initialW: wsSize.width, initialH: wsSize.height, initialX: wsPos.x, initialY: wsPos.y })} className="absolute bottom-0 right-0 w-8 h-8 cursor-se-resize z-10 flex items-center justify-center">
+                <div className="w-1.5 h-1.5 bg-himalaya-gold/20 rounded-full" />
+              </div>
+              <div onMouseDown={(e) => setResizing({ direction: 'e', startX: e.clientX, startY: e.clientY, initialW: wsSize.width, initialH: wsSize.height, initialX: wsPos.x, initialY: wsPos.y })} className="absolute top-0 right-0 w-2 h-full cursor-e-resize z-10" />
+              <div onMouseDown={(e) => setResizing({ direction: 's', startX: e.clientX, startY: e.clientY, initialW: wsSize.width, initialH: wsSize.height, initialX: wsPos.x, initialY: wsPos.y })} className="absolute bottom-0 left-0 w-full h-2 cursor-s-resize z-10" />
+            </>
+          )}
         </div>
       )}
       {!isInputVisible && (
-        <button onClick={() => setIsInputVisible(true)} className="fixed bottom-12 right-12 w-14 h-14 bg-himalaya-red text-himalaya-gold rounded-2xl shadow-2xl flex items-center justify-center z-[400] transition-transform hover:scale-110 active:scale-90"><PenTool size={24} /></button>
+        <button onClick={() => setIsInputVisible(true)} className="fixed bottom-12 right-12 w-16 h-16 bg-himalaya-red text-himalaya-gold rounded-[1.5rem] shadow-2xl flex items-center justify-center z-[400] transition-all hover:scale-110 active:scale-90 border-4 border-himalaya-gold/20 group">
+          <PenTool size={28} className="group-hover:rotate-12 transition-transform" />
+        </button>
       )}
     </div>
   );
