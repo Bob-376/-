@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { 
   Loader2, Feather, RotateCcw, Plus, Minus, AlertCircle, PenTool, X, MoveRight, 
   Key, Flame, Minimize2, Stars, Maximize, Languages, Info, Search,
-  Trophy, BarChart3, Milestone, BrainCircuit, Compass, Pen, Maximize2, RefreshCw
+  Trophy, BarChart3, Milestone, BrainCircuit, Compass, Pen, Maximize2, RefreshCw, Sparkles
 } from 'lucide-react';
 import Header from './components/Header';
 import ChatMessage from './components/ChatMessage';
@@ -42,8 +42,7 @@ const App: React.FC = () => {
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
 
-  // Selection/Explanation state
-  const [selection, setSelection] = useState<{ text: string, x: number, y: number } | null>(null);
+  const [selection, setSelection] = useState<{ text: string, x: number, y: number, isInsideWorkshop: boolean } | null>(null);
   const [explanation, setExplanation] = useState<{ text: string, loading: boolean } | null>(null);
 
   const [wsPos, setWsPos] = useState(() => {
@@ -81,17 +80,6 @@ const App: React.FC = () => {
     }
   }, [messages, wsPos, wsSize, isMaximized]);
 
-  useEffect(() => {
-    if (messages.length === 0) {
-      setMessages([{ 
-        id: 'welcome', 
-        role: 'model', 
-        text: 'བཀྲ་ཤིས་བདེ་ལེགས། བོད་ཀྱི་ཡིག་རིགས་创作助手欢迎您。我已经准备好为您书写五万字的史诗巨著。', 
-        timestamp: Date.now() 
-      }]);
-    }
-  }, [messages.length]);
-
   const handleOpenKeyDialog = async () => {
     if (window.aistudio) {
       await window.aistudio.openSelectKey();
@@ -106,17 +94,21 @@ const App: React.FC = () => {
       try {
         const range = sel.getRangeAt(0);
         const rect = range.getBoundingClientRect();
+        const target = e.target as HTMLElement;
+        const isInsideWorkshop = !!target.closest('#scribe-editor');
+
         if (rect.width > 0 && rect.height > 0) {
           setSelection({
             text: sel.toString().trim(),
             x: rect.left + rect.width / 2,
-            y: rect.top - 10
+            y: rect.top - 10,
+            isInsideWorkshop
           });
         }
       } catch (err) {}
     } else {
       const target = e.target as HTMLElement;
-      if (!target.closest('.explanation-bubble')) {
+      if (!target.closest('.explanation-bubble') && !target.closest('#workshop-toolbar-research')) {
         setSelection(null);
         setExplanation(null);
       }
@@ -145,6 +137,59 @@ const App: React.FC = () => {
         );
       }
     }
+  };
+
+  const formatExplanationText = (text: string) => {
+    if (!text) return null;
+
+    // Detect structured sections
+    const tibetanMatch = text.match(/---TIBETAN_COMMENTARY---([\s\S]*?)(?=---CHINESE_TRANSLATION---|$)/);
+    const chineseMatch = text.match(/---CHINESE_TRANSLATION---([\s\S]*?)$/);
+
+    const tibContent = tibetanMatch ? tibetanMatch[1].trim() : null;
+    const chiContent = chineseMatch ? chineseMatch[1].trim() : null;
+
+    if (!tibContent && !chiContent) {
+      // Fallback to naive splitting if markers are missing
+      const segments = text.split(/([\u0F00-\u0FFF\s་]+)/g);
+      return segments.map((s, i) => {
+        if (!s) return null;
+        const isTibetan = /[\u0F00-\u0FFF\s་]/.test(s);
+        return (
+          <span key={i} className={isTibetan ? 'text-2xl font-tibetan leading-relaxed block mb-4 text-himalaya-dark' : 'text-sm opacity-70 leading-relaxed block'}>
+            {s}
+          </span>
+        );
+      });
+    }
+
+    return (
+      <div className="space-y-8">
+        {tibContent && (
+          <div className="animate-in fade-in slide-in-from-top-2 duration-500">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-px flex-1 bg-himalaya-gold/20" />
+              <span className="text-[10px] font-black text-himalaya-gold uppercase tracking-[0.2em]">གསུང་བཤད་研注</span>
+              <div className="h-px flex-1 bg-himalaya-gold/20" />
+            </div>
+            <p className="text-3xl font-tibetan leading-[2] text-himalaya-dark">
+              {tibContent}
+            </p>
+          </div>
+        )}
+        {chiContent && (
+          <div className="pt-4 border-t border-himalaya-gold/5 animate-in fade-in slide-in-from-bottom-2 duration-700">
+            <div className="flex items-center gap-2 mb-3 opacity-30">
+              <div className="h-px w-4 bg-himalaya-dark" />
+              <span className="text-[10px] font-bold text-himalaya-dark uppercase tracking-widest">汉译 Rendering</span>
+            </div>
+            <p className="text-base font-serif italic text-himalaya-dark opacity-80 leading-relaxed">
+              {chiContent}
+            </p>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const handleResetConversation = () => {
@@ -254,7 +299,6 @@ const App: React.FC = () => {
     setIsLoading(true);
     let botMsgId = targetId || Date.now().toString();
 
-    // Prepare history for stateless sendMessage
     const history = messages.map(m => ({ 
       role: m.role, 
       parts: [{ text: m.text }] 
@@ -302,7 +346,7 @@ const App: React.FC = () => {
           </div>
         );
         setHasApiKey(false);
-        handleOpenKeyDialog(); // Auto trigger as per instruction
+        handleOpenKeyDialog();
       } else if (errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
         setError(
           <div className="flex flex-col gap-2">
@@ -404,7 +448,7 @@ const App: React.FC = () => {
           {!explanation && (
             <div className="flex items-center gap-1 bg-himalaya-dark text-white p-1 rounded-xl shadow-2xl border border-white/20">
               <button onClick={() => handleExplain('explain')} className="flex items-center gap-2 px-3 py-1 hover:bg-white/10 rounded-lg text-[9px] font-bold uppercase tracking-widest border-r border-white/10">
-                <Info size={12} className="text-himalaya-gold" />
+                <Sparkles size={12} className="text-himalaya-gold" />
                 <span>研注</span>
               </button>
               <button onClick={() => handleExplain('translate')} className="flex items-center gap-2 px-3 py-1 hover:bg-white/10 rounded-lg text-[9px] font-bold uppercase tracking-widest">
@@ -414,13 +458,35 @@ const App: React.FC = () => {
             </div>
           )}
           {explanation && (
-            <div className="mt-2 w-80 bg-white border-2 border-himalaya-gold rounded-2xl shadow-2xl p-4 animate-in">
-               <div className="flex justify-between mb-2">
-                  <span className="text-[9px] font-black text-himalaya-red uppercase">宗师研注</span>
-                  <button onClick={() => { setExplanation(null); setSelection(null); }}><X size={12} /></button>
+            <div className="mt-2 w-[32rem] bg-white border-2 border-himalaya-gold rounded-[2.5rem] shadow-2xl p-8 animate-in zoom-in slide-in-from-top-4 duration-300">
+               <div className="flex justify-between items-center mb-6 pb-4 border-b border-himalaya-gold/10">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-himalaya-red flex items-center justify-center">
+                      <Sparkles size={16} className="text-himalaya-gold" />
+                    </div>
+                    <div>
+                      <span className="text-[12px] font-black text-himalaya-red uppercase tracking-[0.3em] block">宗师研注</span>
+                      <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">Imperial Analysis System</span>
+                    </div>
+                  </div>
+                  <button onClick={() => { setExplanation(null); setSelection(null); }} className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors">
+                    <X size={16} />
+                  </button>
                </div>
-               <div className="text-sm leading-relaxed overflow-y-auto max-h-60 custom-scrollbar whitespace-pre-wrap">
-                  {explanation.loading ? <Loader2 className="animate-spin mx-auto" /> : explanation.text}
+               <div className="overflow-y-auto max-h-[60vh] custom-scrollbar px-2">
+                  {explanation.loading ? (
+                    <div className="flex flex-col items-center py-12 gap-4">
+                      <Loader2 className="animate-spin text-himalaya-red" size={32} />
+                      <div className="text-center">
+                        <span className="text-[10px] font-black uppercase text-himalaya-gold tracking-[0.2em] block mb-1">查阅秘典...</span>
+                        <span className="text-[8px] font-bold text-gray-300 uppercase tracking-widest">Consulting Forbidden Archives</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="prose prose-sm max-w-none">
+                      {formatExplanationText(explanation.text)}
+                    </div>
+                  )}
                </div>
             </div>
           )}
@@ -438,7 +504,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Editor Workshop */}
+      {/* Editor Workshop (资料栏) */}
       {isInputVisible && (
         <div 
           ref={workshopRef}
@@ -464,9 +530,19 @@ const App: React.FC = () => {
                   <Plus size={12} />
                 </button>
               </div>
+
+              {selection?.isInsideWorkshop && !explanation && (
+                <button 
+                  id="workshop-toolbar-research"
+                  onClick={() => handleExplain('explain')}
+                  className="ml-4 flex items-center gap-2 px-4 py-1.5 bg-himalaya-red text-himalaya-gold rounded-xl border border-himalaya-gold/40 hover:brightness-110 transition-all shadow-lg animate-in fade-in slide-in-from-left-4"
+                >
+                  <Sparkles size={14} className="text-himalaya-gold" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em]">研注并分析 Analysis</span>
+                </button>
+              )}
             </div>
 
-            {/* "Scribe" (落笔) Button centered in the toolbar */}
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                <button 
                   onClick={() => handleSend()} 
@@ -491,6 +567,7 @@ const App: React.FC = () => {
 
           <div className="flex-1 overflow-hidden relative p-4">
               <div 
+                id="scribe-editor"
                 ref={editorRef} 
                 contentEditable 
                 spellCheck="false" 
@@ -500,7 +577,6 @@ const App: React.FC = () => {
               />
               {!inputText && <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10 font-tibetan text-3xl">开始书写...</div>}
               
-              {/* Error messages now floating bottom-right of workspace */}
               {error && (
                 <div className="absolute bottom-6 right-6 z-[10] p-3 px-5 rounded-xl border border-red-100 bg-white shadow-xl text-red-600 text-xs max-w-xs animate-in slide-in-from-bottom-2">
                   <div className="flex items-start gap-2">

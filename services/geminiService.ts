@@ -37,13 +37,11 @@ async function withRetry<T>(
       return withRetry(fn, retries - 1, delay * 2);
     }
     
-    // Pass specific error messages up to the UI
     throw error;
   }
 }
 
 export const startNewChat = (history: any[]) => {
-  // Always create a new instance right before use to ensure latest API Key
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   return ai.chats.create({
     model: 'gemini-3-pro-preview',
@@ -63,8 +61,6 @@ export const sendMessageToSession = async (
   history: any[],
   onUpdate: (text: string) => void
 ): Promise<string> => {
-  // Always create a new instance and a new chat session with the full history 
-  // to ensure the latest API Key is used and context is maintained.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const chat = ai.chats.create({
     model: 'gemini-3-pro-preview',
@@ -100,18 +96,28 @@ export const quickExplain = async (text: string, type: 'explain' | 'translate'):
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const prompt = type === 'explain' 
-    ? `You are an expert in Tibetan philology and cultural history. For the following text: "${text}", provide:
-       1. A profound scholarly explanation in high literary Tibetan (མངོན་བརྗོད་དང་རིགས་ལམ་གྱི་ལམ་ནས་འགྲེལ་བཤད།), prioritizing linguistic depth and cultural nuance.
-       2. An accurate, culturally sensitive, and elegant translation into Simplified Chinese that captures the philosophical or poetic spirit of the original.
-       Structure your response with the Tibetan explanation FIRST. Use clear, respectful formatting.`
-    : `Translate the following text into elegant, literary simplified Chinese: "${text}". Ensure the translation respects the cultural and sacred nuances of the Tibetan language. Provide a brief scholarly Tibetan synonym or contextual note in Tibetan if it aids in understanding the depth of the term.`;
+    ? `Analyze the following Tibetan text: "${text}".
+       You must provide a dual-language scholarly response.
+       
+       MANDATORY STRUCTURE:
+       ---TIBETAN_COMMENTARY---
+       [Write a profound, scholarly, and beautiful explanation entirely in formal literary Tibetan here. Use honorifics and philological depth.]
+       
+       ---CHINESE_TRANSLATION---
+       [Provide an elegant, literary Simplified Chinese translation that captures the spiritual essence of the original.]
+       
+       Rules:
+       - No other text outside these markers.
+       - Tibetan commentary must be exhaustive and first.`
+    : `Translate the following text into elegant, literary Simplified Chinese: "${text}". 
+       If the source is Tibetan, include a brief context line in formal Tibetan first.`;
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
-        systemInstruction: "You are a world-class scholar of Tibetan studies, a master philologist, and a culturally sensitive translator.",
+        systemInstruction: "You are a world-class scholar of Tibetan studies and philology. Your primary mode of communication is high literary Tibetan, followed by precise Chinese translation.",
         maxOutputTokens: 2048
       }
     });
@@ -123,5 +129,5 @@ export const quickExplain = async (text: string, type: 'explain' | 'translate'):
 };
 
 export const resetChat = () => {
-  // Reset logic is now handled by re-instantiating in the functions above.
+  // Logic handled by re-instantiation.
 };
