@@ -31,7 +31,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const formatMixedScript = (text: string) => {
+  const formatMixedScript = (text: string, baseSizeClass: string = 'text-2xl') => {
     const cleaned = cleanText(text);
     // Split into segments of Tibetan script and non-Tibetan script
     const segments = cleaned.split(/([\u0F00-\u0FFF\s་]+)/g);
@@ -44,8 +44,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) => {
         <span 
           key={i} 
           className={`
-            text-2xl leading-relaxed text-himalaya-dark
-            ${isTibetan ? 'font-tibetan' : 'font-sans'}
+            leading-[1.8] text-himalaya-dark transition-all duration-200
+            ${isTibetan 
+              ? 'font-tibetan text-[1.4em]' 
+              : 'font-sans text-[1em] opacity-90'}
           `}
         >
           {s}

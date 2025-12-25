@@ -1,8 +1,6 @@
 
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
 
-let currentChatSession: Chat | null = null;
-
 const SYSTEM_INSTRUCTION = `
 You are the "Grand Imperial Historian of the Tibetan Highlands" (བོད་ཀྱི་རྒྱལ་རབས་ལོ་རྒྱུས་སྨྲ་བའི་དབང་པོ།).
 Your soul mission is to write a 50,000-tsheg / 50,000-character MAGNUM OPUS.
@@ -21,32 +19,33 @@ STRICT LITERARY PROTOCOL:
 
 async function withRetry<T>(
   fn: () => Promise<T>,
-  retries = 5,
-  delay = 3000
+  retries = 3,
+  delay = 2000
 ): Promise<T> {
   try {
     return await fn();
   } catch (error: any) {
     const errorMsg = error?.message || "";
-    const isQuotaError = errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED") || error?.status === "RESOURCE_EXHAUSTED";
+    const isQuotaError = 
+      errorMsg.includes("429") || 
+      errorMsg.includes("RESOURCE_EXHAUSTED") || 
+      error?.status === "RESOURCE_EXHAUSTED";
     
     if (retries > 0 && isQuotaError) {
-      console.warn(`Quota exceeded or Rate limit hit. Retrying in ${delay}ms... (${retries} retries left)`);
+      console.warn(`Quota exceeded. Retrying in ${delay}ms... (${retries} retries left)`);
       await new Promise((resolve) => setTimeout(resolve, delay));
       return withRetry(fn, retries - 1, delay * 2);
     }
     
-    if (errorMsg.includes("Requested entity was not found")) {
-      throw new Error("API_KEY_INVALID_OR_NOT_FOUND");
-    }
-
+    // Pass specific error messages up to the UI
     throw error;
   }
 }
 
 export const startNewChat = (history: any[]) => {
+  // Always create a new instance right before use to ensure latest API Key
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  currentChatSession = ai.chats.create({
+  return ai.chats.create({
     model: 'gemini-3-pro-preview',
     config: {
       systemInstruction: SYSTEM_INSTRUCTION,
@@ -57,29 +56,29 @@ export const startNewChat = (history: any[]) => {
     },
     history: history,
   });
-  return currentChatSession;
 };
 
 export const sendMessageToSession = async (
   text: string,
+  history: any[],
   onUpdate: (text: string) => void
 ): Promise<string> => {
+  // Always create a new instance and a new chat session with the full history 
+  // to ensure the latest API Key is used and context is maintained.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  if (!currentChatSession) {
-    currentChatSession = ai.chats.create({
-      model: 'gemini-3-pro-preview',
-      config: { 
-        systemInstruction: SYSTEM_INSTRUCTION,
-        maxOutputTokens: 8192,
-        thinkingConfig: { thinkingBudget: 4096 }
-      },
-    });
-  }
+  const chat = ai.chats.create({
+    model: 'gemini-3-pro-preview',
+    config: { 
+      systemInstruction: SYSTEM_INSTRUCTION,
+      maxOutputTokens: 8192,
+      thinkingConfig: { thinkingBudget: 4096 }
+    },
+    history: history,
+  });
 
   try {
     const responseStream = await withRetry<any>(() => 
-      currentChatSession!.sendMessageStream({ message: text })
+      chat.sendMessageStream({ message: text })
     );
 
     let fullText = "";
@@ -100,30 +99,29 @@ export const sendMessageToSession = async (
 export const quickExplain = async (text: string, type: 'explain' | 'translate'): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  // Refined prompt to prioritize Tibetan first
   const prompt = type === 'explain' 
-    ? `You are a master of Tibetan linguistics. For the following text: "${text}", provide:
-       1. A deep scholarly explanation in pure Tibetan (མངོན་བརྗོད་དང་རིགས་ལམ་གྱི་ལམ་ནས་འགྲེལ་བཤད།) as the priority.
-       2. An accurate and elegant translation into Simplified Chinese.
-       Structure the response with the Tibetan explanation FIRST, followed by the Chinese explanation. Use clear headers.`
-    : `Translate the following text into elegant, literary simplified Chinese: "${text}". Provide a brief Tibetan synonym if applicable. Tibetan context first.`;
+    ? `You are an expert in Tibetan philology and cultural history. For the following text: "${text}", provide:
+       1. A profound scholarly explanation in high literary Tibetan (མངོན་བརྗོད་དང་རིགས་ལམ་གྱི་ལམ་ནས་འགྲེལ་བཤད།), prioritizing linguistic depth and cultural nuance.
+       2. An accurate, culturally sensitive, and elegant translation into Simplified Chinese that captures the philosophical or poetic spirit of the original.
+       Structure your response with the Tibetan explanation FIRST. Use clear, respectful formatting.`
+    : `Translate the following text into elegant, literary simplified Chinese: "${text}". Ensure the translation respects the cultural and sacred nuances of the Tibetan language. Provide a brief scholarly Tibetan synonym or contextual note in Tibetan if it aids in understanding the depth of the term.`;
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
-        systemInstruction: "You are a scholarly Tibetan-Chinese translator and philologist. You prioritize Tibetan linguistic depth.",
+        systemInstruction: "You are a world-class scholar of Tibetan studies, a master philologist, and a culturally sensitive translator.",
         maxOutputTokens: 2048
       }
     });
     return response.text || "No explanation available.";
   } catch (error) {
     console.error("Quick Explain Error:", error);
-    return "Error occurred while fetching explanation.";
+    throw error;
   }
 };
 
 export const resetChat = () => {
-  currentChatSession = null;
+  // Reset logic is now handled by re-instantiating in the functions above.
 };

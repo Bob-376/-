@@ -1,24 +1,31 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { RefreshCcw, BrainCircuit, Lightbulb, Play, Pause, RotateCcw, Coffee, PenTool as Pen, Layout as LayoutIcon, Feather } from 'lucide-react';
+import { RefreshCcw, BrainCircuit, Play, Pause, RotateCcw, Coffee, PenTool as Pen, Layout as LayoutIcon, Feather } from 'lucide-react';
 
 interface HeaderProps {
   onReset: () => void;
   onResetLayout: () => void;
-  onTogglePins: () => void;
-  onToggleDrafts: () => void;
   onToggleMemory: () => void;
-  onToggleWorkshop: () => void;
-  pinCount: number;
-  projectName?: string;
+  totalCharacters: number;
+  totalTshegs: number;
+  epicGoal: number;
 }
 
-const Header: React.FC<HeaderProps> = ({ onReset, onResetLayout, onToggleMemory, onToggleWorkshop, pinCount, projectName }) => {
+const Header: React.FC<HeaderProps> = ({ 
+  onReset, 
+  onResetLayout, 
+  onToggleMemory, 
+  totalCharacters,
+  totalTshegs,
+  epicGoal
+}) => {
   const [mode, setMode] = useState<'work' | 'rest'>('work');
-  const [timeLeft, setTimeLeft] = useState(25 * 60);
+  const [timeLeft, setTimeLeft] = useState(60 * 60); // Updated to 60 minutes
   const [isActive, setIsActive] = useState(false);
+  const [wasActiveBeforeHidden, setWasActiveBeforeHidden] = useState(false);
   const timerRef = useRef<number | null>(null);
 
+  // Core Timer Logic
   useEffect(() => {
     if (isActive && timeLeft > 0) {
       timerRef.current = window.setInterval(() => {
@@ -27,24 +34,68 @@ const Header: React.FC<HeaderProps> = ({ onReset, onResetLayout, onToggleMemory,
     } else if (timeLeft === 0) {
       setIsActive(false);
       if (timerRef.current) clearInterval(timerRef.current);
+      // Optional: notify user that session is over
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isActive, timeLeft]);
 
-  const toggleTimer = () => setIsActive(!isActive);
+  // Visibility Change Handling (Leaving the computer/tab)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden) {
+        if (isActive) {
+          setIsActive(false);
+          setWasActiveBeforeHidden(true);
+        }
+      } else {
+        // When coming back, if it was running, we could auto-resume
+        if (wasActiveBeforeHidden) {
+          setIsActive(true);
+          setWasActiveBeforeHidden(false);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [isActive, wasActiveBeforeHidden]);
+
+  // Activity Detection (Starting work resumes timer)
+  useEffect(() => {
+    const handleActivity = () => {
+      // If we are in work mode, not hidden, and not currently running, auto-start on interaction
+      if (!isActive && mode === 'work' && !document.hidden && timeLeft > 0) {
+        setIsActive(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleActivity);
+    window.addEventListener('mousedown', handleActivity);
+    
+    return () => {
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('mousedown', handleActivity);
+    };
+  }, [isActive, mode, timeLeft]);
+
+  const toggleTimer = () => {
+    setIsActive(!isActive);
+    setWasActiveBeforeHidden(false); // Manual override clears auto-resume memory
+  };
   
   const resetTimer = () => {
     setIsActive(false);
-    setTimeLeft(mode === 'work' ? 25 * 60 : 5 * 60);
+    setWasActiveBeforeHidden(false);
+    setTimeLeft(60 * 60);
   };
 
   const switchMode = () => {
     const newMode = mode === 'work' ? 'rest' : 'work';
     setMode(newMode);
     setIsActive(false);
-    setTimeLeft(newMode === 'work' ? 25 * 60 : 5 * 60);
+    setWasActiveBeforeHidden(false);
+    setTimeLeft(60 * 60); // Both modes set to 60 minutes as requested
   };
 
   const formatTime = (seconds: number) => {
@@ -53,79 +104,97 @@ const Header: React.FC<HeaderProps> = ({ onReset, onResetLayout, onToggleMemory,
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const progress = Math.min(100, (totalCharacters / epicGoal) * 100);
+
   return (
-    <header className="bg-himalaya-red text-himalaya-cream p-4 shadow-xl border-b-4 border-himalaya-gold sticky top-0 z-40">
+    <header className="bg-himalaya-red text-himalaya-cream p-3 shadow-xl border-b-4 border-himalaya-gold sticky top-0 z-[100]">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 px-2">
         
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-himalaya-gold flex items-center justify-center shadow-lg border-2 border-white/20">
-             <Feather className="text-himalaya-red w-7 h-7" />
+        {/* Left Section: Logo & Info */}
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="w-10 h-10 rounded-lg bg-himalaya-gold flex items-center justify-center shadow-lg">
+             <Feather className="text-himalaya-red w-6 h-6" />
           </div>
           <div className="flex flex-col">
-            <h1 className="text-xl md:text-2xl font-bold tracking-widest font-tibetan">
-              བོད་ཀྱི་ཡིག་རིགས་创作助手
+            <h1 className="text-lg font-bold tracking-widest font-tibetan leading-tight">
+              བོད་ཀྱི་ཡིག་རིགས་བཙལ་བཤེར།
             </h1>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] md:text-xs text-himalaya-gold font-bold uppercase tracking-[0.2em] opacity-80">
-                Tibetan Master Scribe
-              </span>
-              {projectName && (
-                <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 bg-black/20 rounded-full border border-white/10">
-                  <div className="w-1.5 h-1.5 bg-himalaya-gold rounded-full" />
-                  <span className="text-[8px] font-bold text-white/60 uppercase tracking-wider truncate max-w-[100px] font-light">
-                    {projectName}
-                  </span>
-                </div>
-              )}
+            <span className="text-[9px] text-himalaya-gold font-bold uppercase tracking-wider opacity-80">
+              Tibetan Scribe
+            </span>
+          </div>
+        </div>
+
+        {/* Center Section: Compact Integrated Counter */}
+        <div className="flex items-center gap-4 bg-black/20 px-4 py-1.5 rounded-xl border border-white/5 shadow-inner flex-1 max-w-md">
+          <div className="flex flex-col items-start min-w-[90px]">
+            <div className="flex items-baseline gap-1">
+              <span className="text-lg font-black text-himalaya-gold leading-none tabular-nums">{totalCharacters.toLocaleString()}</span>
+              <span className="text-[7px] font-bold text-white/40 uppercase">/ {epicGoal/1000}K</span>
+            </div>
+            <div className="w-full h-1 bg-white/10 rounded-full mt-1 overflow-hidden">
+              <div 
+                className="h-full bg-himalaya-gold transition-all duration-700" 
+                style={{ width: `${progress}%` }} 
+              />
             </div>
           </div>
+          
+          <div className="w-px h-6 bg-white/10" />
+          
+          <div className="flex flex-col items-start">
+            <div className="flex items-baseline gap-1">
+              <span className="text-lg font-black text-white leading-none tabular-nums">{totalTshegs.toLocaleString()}</span>
+              <span className="text-[7px] font-bold text-white/40 uppercase tracking-tighter">ཚེག། (Tshegs)</span>
+            </div>
+            <span className="text-[6px] font-black uppercase tracking-widest text-white/20">PROGRESS</span>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 bg-black/20 px-4 py-2 rounded-2xl border border-white/10 shadow-inner">
-          <div className="flex flex-col items-center mr-2">
-             <span className={`text-[8px] font-bold uppercase tracking-widest ${mode === 'work' ? 'text-himalaya-gold' : 'text-emerald-400'}`}>
-                {mode === 'work' ? '专注创作 ལས་ཀ།' : '静心休憩 ངལ་གསོ།'}
-             </span>
-             <div className="text-xl font-mono font-bold tracking-tighter w-16 text-center" aria-live="off">
-                {formatTime(timeLeft)}
+        {/* Right Section: Timer & Nav */}
+        <div className="flex items-center gap-2">
+          {/* Timer - Smaller */}
+          <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-xl border border-white/5">
+             <div className="flex flex-col items-center mr-1">
+               <span className={`text-[6px] font-black uppercase tracking-tighter ${mode === 'work' ? 'text-himalaya-gold' : 'text-green-400'}`}>
+                 {mode === 'work' ? '专注' : '休憩'}
+               </span>
+               <div className="text-base font-mono font-bold w-12 text-center tabular-nums">
+                  {formatTime(timeLeft)}
+               </div>
+             </div>
+             <div className="flex items-center gap-0.5 border-l border-white/10 pl-1.5">
+               <button onClick={toggleTimer} className={`p-1 transition-colors ${isActive ? 'text-himalaya-gold' : 'text-white/60 hover:text-white'}`}>
+                 {isActive ? <Pause size={14} /> : <Play size={14} fill="currentColor" />}
+               </button>
+               <button onClick={switchMode} className="p-1 text-white/60 hover:text-himalaya-gold transition-colors" title="切换模式">
+                 {mode === 'work' ? <Coffee size={14} /> : <Pen size={14} />}
+               </button>
+               <button onClick={resetTimer} className="p-1 text-white/40 hover:text-white transition-colors" title="重置时间">
+                 <RotateCcw size={12} />
+               </button>
              </div>
           </div>
-          
-          <div className="flex items-center gap-1">
-            <button onClick={toggleTimer} className={`p-2 rounded-lg ${isActive ? 'bg-white/10 text-white' : 'bg-himalaya-gold text-himalaya-red'}`}>
-              {isActive ? <Pause size={16} /> : <Play size={16} fill="currentColor" />}
-            </button>
-            <button onClick={switchMode} className="p-2 bg-white/5 rounded-lg text-himalaya-gold">
-              {mode === 'work' ? <Coffee size={16} /> : <Pen size={16} />}
-            </button>
-            <button onClick={resetTimer} className="p-2 bg-white/5 rounded-lg text-white/40 hover:text-white">
-              <RotateCcw size={14} />
-            </button>
-          </div>
-        </div>
-        
-        <nav className="flex items-center gap-1 md:gap-3">
-          <button onClick={onResetLayout} className="p-2 md:px-4 md:py-2 bg-white/5 rounded-xl flex items-center gap-2 text-himalaya-gold" title="重置窗口位置">
-            <LayoutIcon className="w-5 h-5" />
-            <span className="hidden md:inline text-[10px] font-bold uppercase tracking-widest">重置布局</span>
-          </button>
 
-          <button onClick={onToggleWorkshop} className="p-2 md:px-4 md:py-2 bg-white/5 rounded-xl flex items-center gap-2">
-            <Lightbulb className="w-5 h-5 text-himalaya-gold" />
-            <span className="hidden md:inline text-[10px] font-bold uppercase tracking-widest">研讨会</span>
-          </button>
-          
-          <button onClick={onToggleMemory} className="p-2 md:px-4 md:py-2 bg-white/5 rounded-xl flex items-center gap-2">
-            <BrainCircuit className="w-5 h-5 text-himalaya-gold" />
-            <span className="hidden md:inline text-[10px] font-bold uppercase tracking-widest">记忆库</span>
-          </button>
-          
           <div className="w-px h-6 bg-white/10 mx-1"></div>
-          
-          <button onClick={onReset} className="p-2 bg-white/5 rounded-xl" title="重置对话">
-            <RefreshCcw className="w-5 h-5 text-himalaya-gold" />
-          </button>
-        </nav>
+
+          {/* Nav Buttons */}
+          <nav className="flex items-center gap-1.5">
+            <button onClick={onResetLayout} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5 group" title="重置布局">
+              <LayoutIcon size={16} />
+              <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">布局</span>
+            </button>
+            
+            <button onClick={onToggleMemory} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5" title="记忆库">
+              <BrainCircuit size={16} />
+              <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">记忆</span>
+            </button>
+            
+            <button onClick={onReset} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10" title="重置对话">
+              <RefreshCcw size={16} />
+            </button>
+          </nav>
+        </div>
       </div>
     </header>
   );

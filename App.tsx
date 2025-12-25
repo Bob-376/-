@@ -1,15 +1,14 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
-  Send, Loader2, Feather, RotateCcw, Plus, Minus, Zap, AlertCircle, BookOpen,
-  GripHorizontal, Maximize2, Layout, PenTool, X, ChevronUp, ChevronDown, MoveRight, 
-  History, ScrollText, Key, ExternalLink, Flame, Minimize2, Settings, RefreshCw, Type,
-  Sparkles, Pen, Compass, Wand2, Stars, Gem, Maximize, Languages, Info, Search
+  Loader2, Feather, RotateCcw, Plus, Minus, AlertCircle, PenTool, X, MoveRight, 
+  Key, Flame, Minimize2, Stars, Maximize, Languages, Info, Search,
+  Trophy, BarChart3, Milestone, BrainCircuit, Compass, Pen, Maximize2, RefreshCw
 } from 'lucide-react';
 import Header from './components/Header';
 import ChatMessage from './components/ChatMessage';
 import { Message } from './types';
-import { startNewChat, sendMessageToSession, resetChat, quickExplain } from './services/geminiService';
+import { sendMessageToSession, quickExplain } from './services/geminiService';
 
 const STORAGE_KEY_MESSAGES = 'himalaya_v2_messages';
 const STORAGE_KEY_POS = 'himalaya_ws_pos';
@@ -21,7 +20,6 @@ declare global {
     hasSelectedApiKey: () => Promise<boolean>;
     openSelectKey: () => Promise<void>;
   }
-
   interface Window {
     aistudio?: AIStudio;
   }
@@ -36,11 +34,12 @@ const App: React.FC = () => {
   });
   
   const [inputText, setInputText] = useState("");
-  const [fontSize, setFontSize] = useState(28); 
+  const [fontSize, setFontSize] = useState(20); 
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<React.ReactNode | null>(null);
   const [isInputVisible, setIsInputVisible] = useState(true);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [isMemoryOpen, setIsMemoryOpen] = useState(false);
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
 
   // Selection/Explanation state
@@ -91,17 +90,22 @@ const App: React.FC = () => {
         timestamp: Date.now() 
       }]);
     }
-  }, []);
+  }, [messages.length]);
 
-  // Handle Text Selection
+  const handleOpenKeyDialog = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      setHasApiKey(true);
+      setError(null);
+    }
+  };
+
   const handleTextSelection = useCallback((e: MouseEvent) => {
     const sel = window.getSelection();
     if (sel && sel.toString().trim().length > 0) {
       try {
         const range = sel.getRangeAt(0);
         const rect = range.getBoundingClientRect();
-        
-        // Safety check to ensure the selection isn't just whitespace or UI buttons
         if (rect.width > 0 && rect.height > 0) {
           setSelection({
             text: sel.toString().trim(),
@@ -109,11 +113,8 @@ const App: React.FC = () => {
             y: rect.top - 10
           });
         }
-      } catch (err) {
-        // Selection range might be invalid or detached
-      }
+      } catch (err) {}
     } else {
-      // Don't clear if clicking inside the explanation bubble
       const target = e.target as HTMLElement;
       if (!target.closest('.explanation-bubble')) {
         setSelection(null);
@@ -133,17 +134,40 @@ const App: React.FC = () => {
     try {
       const result = await quickExplain(selection.text, type);
       setExplanation({ text: result, loading: false });
-    } catch (err) {
-      setExplanation({ text: "རེ་ཞིག་འགྲེལ་བཤད་གནང་མ་ཐུབ། (Unable to explain at the moment)", loading: false });
+    } catch (err: any) {
+      setExplanation({ text: "རེ་ཞིག་འགྲེལ་བཤད་གནང་མ་ཐུབ།", loading: false });
+      if (err.message?.includes("429") || err.message?.includes("RESOURCE_EXHAUSTED")) {
+        setError(
+          <div className="flex flex-col gap-2">
+            <span>创作能量（API配额）已耗尽。</span>
+            <button onClick={handleOpenKeyDialog} className="underline font-bold text-left">点击切换 API Key</button>
+          </div>
+        );
+      }
     }
   };
 
-  const handleOpenKeyDialog = async () => {
-    if (window.aistudio) {
-      await window.aistudio.openSelectKey();
-      setHasApiKey(true);
+  const handleResetConversation = () => {
+    if (window.confirm("确定要重置当前史诗的进度吗？此操作不可恢复。")) {
+      setMessages([{ 
+        id: 'welcome', 
+        role: 'model', 
+        text: 'བཀྲ་ཤིས་བདེ་ལེགས། 创作助手已准备好重新落笔。', 
+        timestamp: Date.now() 
+      }]);
+      localStorage.removeItem(STORAGE_KEY_MESSAGES);
+      setInputText("");
+      if (editorRef.current) editorRef.current.innerHTML = "";
       setError(null);
     }
+  };
+
+  const handleResetLayout = () => {
+    const defaultW = 900;
+    setWsPos({ x: (window.innerWidth - defaultW) / 2, y: 100 });
+    setWsSize({ width: defaultW, height: 600 });
+    setIsMaximized(false);
+    setIsInputVisible(true);
   };
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
@@ -172,7 +196,6 @@ const App: React.FC = () => {
         newH = resizing.initialH - BuilderDeltaN;
         newY = resizing.initialY + BuilderDeltaN;
       }
-
       setWsSize({ width: newW, height: newH });
       setWsPos({ x: newX, y: newY });
     }
@@ -193,6 +216,16 @@ const App: React.FC = () => {
       };
     }
   }, [dragging, resizing, handleMouseMove, handleMouseUp]);
+
+  const toggleNativeFullscreen = () => {
+    if (!document.fullscreenElement) {
+      workshopRef.current?.requestFullscreen().catch(err => {
+        console.error(`Error: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
 
   const totalCharacters = useMemo(() => 
     messages.reduce((sum, m) => {
@@ -221,30 +254,32 @@ const App: React.FC = () => {
     setIsLoading(true);
     let botMsgId = targetId || Date.now().toString();
 
+    // Prepare history for stateless sendMessage
+    const history = messages.map(m => ({ 
+      role: m.role, 
+      parts: [{ text: m.text }] 
+    }));
+
     if (!targetId) {
-      startNewChat(messages.map(m => ({ role: m.role, parts: [{ text: m.text }] })));
       setMessages(prev => [
         ...prev,
         { id: (Date.now() + 1).toString(), role: 'user', text: text!, timestamp: Date.now() },
-        { id: botMsgId, role: 'model', text: '宗师正在凝神构思史诗的下一个篇章...', isStreaming: true, timestamp: Date.now() }
+        { id: botMsgId, role: 'model', text: '正在构思下一个篇章...', isStreaming: true, timestamp: Date.now() }
       ]);
     } else {
       setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, isStreaming: true } : m));
     }
 
     try {
-      const resultText = await sendMessageToSession(text!, (chunkText) => {
+      const resultText = await sendMessageToSession(text!, history, (chunkText) => {
         setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: accumulatedText + chunkText } : m));
         messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
       });
 
       const fullContent = accumulatedText + resultText;
-
       if (resultText.includes("[CONTINUE_SIGNAL]") && totalCharacters < EPIC_GOAL_CHARACTERS) {
         const cleanedContent = fullContent.replace("[CONTINUE_SIGNAL]", "");
-        setTimeout(() => {
-          handleSend("请继续书写。མུ་མཐུད་དུ་རྩོམ་སྒྲིག་གནང་རོགས།", botMsgId, cleanedContent);
-        }, 500);
+        setTimeout(() => handleSend("请继续书写。མུ་མཐུད་དུ་རྩོམ་སྒྲིག་གནང་རོགས།", botMsgId, cleanedContent), 500);
       } else {
         setMessages(prev => prev.map(m => m.id === botMsgId ? { 
           ...m, 
@@ -257,15 +292,28 @@ const App: React.FC = () => {
       console.error(e);
       setIsLoading(false);
       setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, isStreaming: false } : m));
-
-      if (e.message === "API_KEY_INVALID_OR_NOT_FOUND") {
-        setError("API密钥无效或未找到。请重新选择。");
+      
+      const errorMsg = e.message || "";
+      if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("API_KEY_INVALID")) {
+        setError(
+          <div className="flex flex-col gap-2">
+            <span>API 密钥无效或未找到。请重新选择。</span>
+            <button onClick={handleOpenKeyDialog} className="underline font-bold text-left">重选 API Key</button>
+          </div>
+        );
         setHasApiKey(false);
-        handleOpenKeyDialog();
-      } else if (e.message?.includes("429") || e.message?.includes("RESOURCE_EXHAUSTED")) {
-        setError("创作能量（API配额）已耗尽。请稍后再试或切换API密钥。");
+        handleOpenKeyDialog(); // Auto trigger as per instruction
+      } else if (errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+        setError(
+          <div className="flex flex-col gap-2">
+            <span>创作能量已耗尽（Quota Exceeded）。</span>
+            <button onClick={handleOpenKeyDialog} className="underline font-bold text-left flex items-center gap-2">
+              <RefreshCw size={14}/> 切换更高级的 API Key 
+            </button>
+          </div>
+        );
       } else {
-        setError("书写中断。错误: " + (e.message || "未知错误"));
+        setError("书写中断。请稍后再试。");
       }
     }
   };
@@ -277,31 +325,6 @@ const App: React.FC = () => {
     }
   };
 
-  const startResize = (direction: ResizeDirection, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (isMaximized) return;
-    setResizing({
-      direction,
-      startX: e.clientX,
-      startY: e.clientY,
-      initialW: wsSize.width,
-      initialH: wsSize.height,
-      initialX: wsPos.x,
-      initialY: wsPos.y
-    });
-  };
-
-  const toggleNativeFullscreen = () => {
-    if (!document.fullscreenElement) {
-      workshopRef.current?.requestFullscreen().catch(err => {
-        console.error(`Error: ${err.message}`);
-      });
-    } else {
-      document.exitFullscreen();
-    }
-  };
-
   const showContinueButton = useMemo(() => {
     const lastMsg = messages[messages.length - 1];
     return lastMsg && lastMsg.role === 'model' && !isLoading;
@@ -310,276 +333,188 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-himalaya-cream font-tibetan overflow-hidden relative">
       <Header 
-        onReset={() => { resetChat(); setMessages([]); }} 
-        onResetLayout={() => { setWsPos({ x: (window.innerWidth - 900) / 2, y: 100 }); setWsSize({ width: 900, height: 600 }); setIsMaximized(false); }} 
-        onToggleMemory={() => {}} 
-        onToggleWorkshop={() => setIsInputVisible(!isInputVisible)} 
-        pinCount={0} 
-        onTogglePins={() => {}} 
-        onToggleDrafts={() => {}} 
+        onReset={handleResetConversation} 
+        onResetLayout={handleResetLayout} 
+        onToggleMemory={() => setIsMemoryOpen(true)} 
+        totalCharacters={totalCharacters}
+        totalTshegs={totalTshegs}
+        epicGoal={EPIC_GOAL_CHARACTERS}
       />
 
       <main className="flex-1 overflow-y-auto p-6 md:p-12 custom-scrollbar relative">
         <div className="max-w-4xl mx-auto space-y-16 pb-[200px]">
-          {messages.map((msg, idx) => (
+          {messages.map((msg) => (
             <div key={msg.id} className="relative">
               <ChatMessage message={msg} onDelete={(id) => setMessages(prev => prev.filter(m => m.id !== id))} />
             </div>
           ))}
           <div ref={messagesEndRef} />
         </div>
+      </main>
 
-        <div className="fixed top-24 right-6 z-[200] flex flex-col gap-4">
-          <div className="bg-white p-5 rounded-[1.5rem] border-2 border-himalaya-gold/30 shadow-2xl flex flex-col items-end min-w-[200px]">
-            <div className="flex flex-col items-end gap-1">
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-black text-himalaya-dark leading-none" aria-live="off">{totalCharacters.toLocaleString()}</span>
-                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">/ 50k</span>
-              </div>
-              <div className="flex items-baseline gap-1 opacity-60">
-                <span className="text-base font-bold text-himalaya-red leading-none">{totalTshegs.toLocaleString()}</span>
-                <span className="text-[7px] font-bold text-gray-400 uppercase">Tshegs</span>
-              </div>
-            </div>
-            
-            <div className="w-full h-1.5 bg-gray-100 rounded-full mt-3 overflow-hidden">
-              <div 
-                className="h-full bg-himalaya-red" 
-                style={{ width: `${Math.min(100, (totalCharacters/EPIC_GOAL_CHARACTERS)*100)}%` }} 
-              />
-            </div>
-            
-            <button 
-              onClick={handleOpenKeyDialog}
-              className={`mt-3 w-full py-1.5 rounded-lg border flex items-center justify-center gap-2 text-[8px] font-black uppercase tracking-wider ${hasApiKey ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-200'}`}
-            >
-              <Key size={10} /> {hasApiKey ? '能量就绪' : '补充能量'}
-            </button>
+      {/* Memory Overlay */}
+      {isMemoryOpen && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-himalaya-dark/60 backdrop-blur-md" onClick={() => setIsMemoryOpen(false)} />
+          <div className="relative w-full max-w-2xl bg-white rounded-[3rem] shadow-2xl border-4 border-himalaya-gold overflow-hidden animate-in fade-in zoom-in duration-300">
+             <div className="bg-himalaya-red p-6 flex justify-between items-center text-himalaya-gold">
+                <div className="flex items-center gap-4">
+                   <div className="w-10 h-10 rounded-xl bg-himalaya-gold/20 flex items-center justify-center">
+                      <BrainCircuit size={24} />
+                   </div>
+                   <div>
+                      <h2 className="text-xl font-black font-tibetan">史诗记忆库</h2>
+                      <p className="text-[8px] uppercase font-bold tracking-widest opacity-60">Memory System</p>
+                   </div>
+                </div>
+                <button onClick={() => setIsMemoryOpen(false)} className="w-8 h-8 rounded-lg bg-black/10 flex items-center justify-center">
+                   <X size={16} />
+                </button>
+             </div>
+             
+             <div className="p-8 space-y-6">
+                <div className="grid grid-cols-3 gap-4">
+                   <div className="bg-himalaya-cream p-4 rounded-2xl border border-himalaya-gold/10 text-center">
+                      <div className="text-xl font-black text-himalaya-dark">{totalCharacters.toLocaleString()}</div>
+                      <div className="text-[8px] font-bold text-gray-400 uppercase">总字数</div>
+                   </div>
+                   <div className="bg-himalaya-cream p-4 rounded-2xl border border-himalaya-gold/10 text-center">
+                      <div className="text-xl font-black text-himalaya-dark">{messages.filter(m => m.role === 'model').length}</div>
+                      <div className="text-[8px] font-bold text-gray-400 uppercase">篇章</div>
+                   </div>
+                   <div className="bg-himalaya-cream p-4 rounded-2xl border border-himalaya-gold/10 text-center">
+                      <div className="text-xl font-black text-himalaya-dark">{Math.floor((totalCharacters/EPIC_GOAL_CHARACTERS)*100)}%</div>
+                      <div className="text-[8px] font-bold text-gray-400 uppercase">进度</div>
+                   </div>
+                </div>
+                <div className="flex justify-end">
+                   <button onClick={() => setIsMemoryOpen(false)} className="px-6 py-2 bg-himalaya-red text-himalaya-gold rounded-xl font-black uppercase text-[9px]">继续</button>
+                </div>
+             </div>
           </div>
         </div>
-      </main>
+      )}
 
       {/* Floating Selection Menu */}
       {selection && (
         <div 
           className="fixed z-[1000] -translate-x-1/2 flex flex-col items-center pointer-events-auto explanation-bubble"
           style={{ left: selection.x, top: selection.y - 10 }}
-          onMouseUp={(e) => e.stopPropagation()}
         >
           {!explanation && (
             <div className="flex items-center gap-1 bg-himalaya-dark text-white p-1 rounded-xl shadow-2xl border border-white/20">
-              <button 
-                onClick={() => handleExplain('explain')}
-                className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/10 rounded-lg text-[10px] font-bold uppercase tracking-widest border-r border-white/10"
-              >
+              <button onClick={() => handleExplain('explain')} className="flex items-center gap-2 px-3 py-1 hover:bg-white/10 rounded-lg text-[9px] font-bold uppercase tracking-widest border-r border-white/10">
                 <Info size={12} className="text-himalaya-gold" />
-                <span>研注 བརྡ་འགྲེལ།</span>
+                <span>研注</span>
               </button>
-              <button 
-                onClick={() => handleExplain('translate')}
-                className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/10 rounded-lg text-[10px] font-bold uppercase tracking-widest"
-              >
+              <button onClick={() => handleExplain('translate')} className="flex items-center gap-2 px-3 py-1 hover:bg-white/10 rounded-lg text-[9px] font-bold uppercase tracking-widest">
                 <Languages size={12} className="text-himalaya-gold" />
-                <span>翻译 ལོ་ཙཱ།</span>
+                <span>翻译</span>
               </button>
             </div>
           )}
-
           {explanation && (
-            <div className="mt-2 w-80 bg-white border-2 border-himalaya-gold rounded-2xl shadow-2xl p-4 overflow-hidden animate-in fade-in zoom-in duration-200">
-               <div className="flex items-center justify-between mb-2 border-b border-gray-100 pb-2">
-                  <span className="text-[10px] font-black text-himalaya-red uppercase tracking-widest flex items-center gap-2">
-                    <Search size={10} /> {explanation.loading ? '正在研读...' : '宗师研注'}
-                  </span>
-                  <button onClick={() => { setExplanation(null); setSelection(null); }} className="text-gray-300 hover:text-red-500">
-                    <X size={14} />
-                  </button>
+            <div className="mt-2 w-80 bg-white border-2 border-himalaya-gold rounded-2xl shadow-2xl p-4 animate-in">
+               <div className="flex justify-between mb-2">
+                  <span className="text-[9px] font-black text-himalaya-red uppercase">宗师研注</span>
+                  <button onClick={() => { setExplanation(null); setSelection(null); }}><X size={12} /></button>
                </div>
-               
-               {explanation.loading ? (
-                 <div className="flex flex-col items-center py-6 gap-3">
-                    <Loader2 size={24} className="animate-spin text-himalaya-gold" />
-                    <span className="text-[10px] font-bold text-gray-400 italic">正在翻阅经卷...</span>
-                 </div>
-               ) : (
-                 <div className="text-sm text-himalaya-dark leading-relaxed font-tibetan max-h-60 overflow-y-auto custom-scrollbar whitespace-pre-wrap pr-2">
-                    {explanation.text}
-                 </div>
-               )}
+               <div className="text-sm leading-relaxed overflow-y-auto max-h-60 custom-scrollbar whitespace-pre-wrap">
+                  {explanation.loading ? <Loader2 className="animate-spin mx-auto" /> : explanation.text}
+               </div>
             </div>
           )}
-          <div className="w-3 h-3 bg-himalaya-dark rotate-45 -mt-1.5 border-r border-b border-white/20" />
         </div>
       )}
 
-      {/* Floating Buttons Bar */}
-      <div className="fixed bottom-12 left-12 right-12 z-[500] pointer-events-none flex justify-between items-end">
-        <div className="flex flex-col gap-4 pointer-events-auto">
-          {showContinueButton && (
-            <button 
-              onClick={handleManualContinue}
-              className="flex items-center gap-3 px-4 py-2 bg-himalaya-red text-himalaya-gold rounded-xl font-bold shadow-xl border-2 border-himalaya-gold/20 text-xs"
-            >
-              <Flame size={14} />
-              <span>接笔续写 མུ་མཐུད་དུ་བྲིས།</span>
-              <MoveRight size={14} />
-            </button>
-          )}
+      {/* Floating Continue Button */}
+      {showContinueButton && (
+        <div className="fixed bottom-12 left-12 pointer-events-auto">
+          <button onClick={handleManualContinue} className="flex items-center gap-3 px-4 py-2 bg-himalaya-red text-himalaya-gold rounded-xl font-bold shadow-xl border-2 border-himalaya-gold/20 text-xs">
+            <Flame size={14} />
+            <span>接笔续写 མུ་མཐུད་དུ་བྲིས།</span>
+            <MoveRight size={14} />
+          </button>
         </div>
+      )}
 
-        <div className="flex flex-col gap-4 items-end pointer-events-auto">
-          {!isInputVisible && (
-            <button 
-              onClick={() => setIsInputVisible(true)} 
-              className="w-16 h-16 bg-himalaya-red text-himalaya-gold rounded-[1.2rem] shadow-2xl border-2 border-himalaya-gold flex items-center justify-center"
-            >
-              <PenTool size={32} />
-            </button>
-          )}
-        </div>
-      </div>
-
+      {/* Editor Workshop */}
       {isInputVisible && (
         <div 
           ref={workshopRef}
-          className={`fixed flex flex-col bg-white overflow-hidden ${isMaximized ? 'inset-0 !w-full !h-full !left-0 !top-0 border-0 rounded-0 z-[400]' : 'border-2 border-himalaya-gold/30 shadow-2xl rounded-[3rem] z-[400]'}`} 
+          className={`fixed flex flex-col bg-white overflow-hidden ${isMaximized ? 'inset-0 !w-full !h-full border-0 z-[400]' : 'border-2 border-himalaya-gold/30 shadow-2xl rounded-[2.5rem] z-[400]'}`} 
           style={isMaximized ? {} : { width: `${wsSize.width}px`, height: `${wsSize.height}px`, left: `${wsPos.x}px`, top: `${wsPos.y}px` }}
         >
-          {!isMaximized && (
-            <>
-              <div className="absolute top-0 left-0 w-8 h-8 cursor-nw-resize z-[501]" onMouseDown={(e) => startResize('nw', e)} />
-              <div className="absolute top-0 right-0 w-8 h-8 cursor-ne-resize z-[501]" onMouseDown={(e) => startResize('ne', e)} />
-              <div className="absolute bottom-0 left-0 w-8 h-8 cursor-sw-resize z-[501]" onMouseDown={(e) => startResize('sw', e)} />
-              <div className="absolute bottom-0 right-0 w-8 h-8 cursor-se-resize z-[501]" onMouseDown={(e) => startResize('se', e)} />
-            </>
-          )}
-
-          <div className="flex flex-col w-full h-full relative">
-            <div 
-              onMouseDown={(e) => { if (!isMaximized) setDragging({ startX: e.clientX, startY: e.clientY, initialX: wsPos.x, initialY: wsPos.y }); }} 
-              onDoubleClick={() => setIsMaximized(!isMaximized)}
-              className={`flex items-center justify-between px-8 cursor-grab active:cursor-grabbing shrink-0 border-b border-gray-100 ${isMaximized ? 'h-20 bg-white' : 'h-16 bg-gray-50/50'}`}
-            >
-              <div className="flex items-center gap-4">
-                 <div className={`rounded-xl bg-himalaya-red flex items-center justify-center ${isMaximized ? 'w-10 h-10' : 'w-8 h-8'}`}>
-                    <PenTool size={isMaximized ? 20 : 16} className="text-himalaya-gold" />
-                 </div>
-                 <div className="flex flex-col">
-                    <span className="text-[9px] font-black uppercase tracking-[0.4em] text-himalaya-red">རྩོམ་སྒྲིག་ཁང་།</span>
-                    <span className={`${isMaximized ? 'text-xl' : 'text-base'} font-black text-himalaya-dark tracking-tight`}>
-                      史诗工坊
-                    </span>
-                 </div>
-              </div>
-
-              <div className="flex items-center gap-8 flex-1 justify-center px-4">
-                  <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-gray-200 shadow-sm">
-                    <button onClick={() => setFontSize(s => Math.max(12, s-4))} className="p-1 rounded-md text-gray-400 hover:text-himalaya-red"><Minus size={18}/></button>
-                    <div className="flex items-center gap-1.5 min-w-[40px] justify-center">
-                       <span className="text-xs font-black tabular-nums text-himalaya-dark">{fontSize}px</span>
-                    </div>
-                    <button onClick={() => setFontSize(s => Math.min(100, s+4))} className="p-1 rounded-md text-gray-400 hover:text-himalaya-red"><Plus size={18}/></button>
-                  </div>
-              </div>
-
+          <div 
+            onMouseDown={(e) => { if (!isMaximized) setDragging({ startX: e.clientX, startY: e.clientY, initialX: wsPos.x, initialY: wsPos.y }); }} 
+            className="h-14 bg-gray-50/50 flex items-center justify-between px-6 cursor-grab active:cursor-grabbing shrink-0 border-b border-gray-100 relative"
+          >
+            <div className="flex items-center shrink-0">
               <div className="flex items-center gap-2">
-                <button onClick={toggleNativeFullscreen} className="p-2 rounded-lg text-gray-400 hover:text-himalaya-dark" title="全屏">
-                  <Maximize size={20} />
+                <PenTool size={16} className="text-himalaya-red" />
+                <span className="text-sm font-black hidden sm:inline">史诗工坊</span>
+              </div>
+              
+              <div className="flex items-center gap-1 ml-4 bg-white/80 px-2 py-0.5 rounded-lg border border-gray-200 shadow-sm">
+                <button onClick={() => setFontSize(s => Math.max(10, s - 2))} className="p-1 text-gray-400 hover:text-himalaya-red transition-colors" title="减小字号">
+                  <Minus size={12} />
                 </button>
-                <button onClick={() => setIsMaximized(!isMaximized)} className="p-2 rounded-lg text-gray-400 hover:text-himalaya-dark" title={isMaximized ? "退出全屏" : "窗口最大化"}>
-                  {isMaximized ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
-                </button>
-                <button onClick={() => setIsInputVisible(false)} className="p-2 bg-white rounded-lg text-gray-400 hover:text-red-500 border border-gray-100">
-                  <X size={20} />
+                <div className="min-w-[32px] text-center text-[10px] font-black text-himalaya-dark">{fontSize}px</div>
+                <button onClick={() => setFontSize(s => Math.min(80, s + 2))} className="p-1 text-gray-400 hover:text-himalaya-red transition-colors" title="增大字号">
+                  <Plus size={12} />
                 </button>
               </div>
             </div>
 
-            <div className={`flex-1 overflow-hidden relative ${isMaximized ? 'p-0 bg-white' : 'p-4 md:p-6 bg-white'}`}>
-                <div 
-                  ref={editorRef} 
-                  contentEditable 
-                  spellCheck="false" 
-                  style={{ fontSize: `${fontSize}px` }} 
-                  className={`w-full h-full outline-none font-tibetan leading-[2] overflow-y-auto custom-scrollbar text-himalaya-dark ${isMaximized ? 'px-16 md:px-48 py-20 pb-96' : 'px-8 md:px-12 py-6 pb-60'}`} 
-                  onInput={() => setInputText(editorRef.current?.innerText || "")}
-                />
-                {!inputText && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none text-gray-50 p-10">
-                    <Stars size={isMaximized ? 400 : 200} className="opacity-5" />
-                    <span className={`${isMaximized ? 'text-5xl' : 'text-3xl'} font-tibetan italic opacity-10`}>书写宏篇...</span>
-                  </div>
-                )}
-
-                <div className={`absolute bottom-8 right-8 z-[500] pointer-events-none ${isMaximized ? 'mb-8 mr-8' : ''}`}>
-                    <div className="flex flex-col items-end gap-6">
-                        {error && (
-                          <div className="p-4 px-6 rounded-2xl border shadow-lg pointer-events-auto bg-white border-red-100">
-                             <div className="flex items-center gap-3 text-red-600 font-bold text-xs">
-                                <AlertCircle size={18} /> {error}
-                             </div>
-                          </div>
-                        )}
-
-                        <div className="relative pointer-events-auto group/launch">
-                          <button 
-                            onClick={() => handleSend()} 
-                            disabled={!inputText.trim() || isLoading}
-                            className={`
-                              relative h-20 px-10 rounded-[2rem] flex items-center gap-6 z-20 overflow-hidden border-2
-                              ${isLoading 
-                                ? 'bg-gray-100 text-gray-400 cursor-wait border-gray-200' 
-                                : inputText.trim() 
-                                  ? 'bg-himalaya-red text-himalaya-gold border-himalaya-gold shadow-xl active:bg-black' 
-                                  : 'bg-gray-50 text-gray-200 cursor-not-allowed border-gray-100'
-                              }
-                            `}
-                          >
-                            <div>
-                               {isLoading ? <Pen size={28} /> : <Compass size={28} />}
-                            </div>
-
-                            <div className="flex flex-col items-start">
-                               <span className={`text-[9px] font-black uppercase tracking-[0.3em] ${!inputText.trim() ? 'opacity-20' : 'opacity-60'}`}>
-                                  {isLoading ? '宗师创作中' : '开启章节'}
-                               </span>
-                               <span className={`text-2xl font-black uppercase tracking-[0.2em] ${!inputText.trim() ? 'opacity-30' : 'opacity-100'}`}>
-                                  {isLoading ? '正在构思' : '落笔'}
-                                </span>
-                            </div>
-                          </button>
-                        </div>
-                    </div>
-                </div>
+            {/* "Scribe" (落笔) Button centered in the toolbar */}
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+               <button 
+                  onClick={() => handleSend()} 
+                  disabled={!inputText.trim() || isLoading}
+                  className={`h-9 px-6 rounded-xl flex items-center gap-2 shadow-md border-2 transition-all active:scale-95 ${isLoading ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-wait' : 'bg-himalaya-red text-himalaya-gold border-himalaya-gold hover:brightness-110'}`}
+                >
+                  {isLoading ? <Loader2 className="animate-spin" size={14} /> : <Compass size={14} />}
+                  <span className="font-black text-xs">落笔</span>
+                </button>
             </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              <button onClick={toggleNativeFullscreen} className="p-1.5 text-gray-400 hover:text-himalaya-dark" title="全屏模式">
+                <Maximize size={16} />
+              </button>
+              <button onClick={() => setIsMaximized(!isMaximized)} className="p-1.5 text-gray-400 hover:text-himalaya-dark" title={isMaximized ? "退出最大化" : "最大化窗口"}>
+                {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              </button>
+              <button onClick={() => setIsInputVisible(false)} className="p-1.5 text-gray-400 hover:text-red-500" title="隐藏工坊"><X size={16} /></button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-hidden relative p-4">
+              <div 
+                ref={editorRef} 
+                contentEditable 
+                spellCheck="false" 
+                style={{ fontSize: `${fontSize}px` }} 
+                className="w-full h-full outline-none font-tibetan leading-[2] overflow-y-auto custom-scrollbar text-himalaya-dark px-4 pb-20" 
+                onInput={() => setInputText(editorRef.current?.innerText || "")}
+              />
+              {!inputText && <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10 font-tibetan text-3xl">开始书写...</div>}
+              
+              {/* Error messages now floating bottom-right of workspace */}
+              {error && (
+                <div className="absolute bottom-6 right-6 z-[10] p-3 px-5 rounded-xl border border-red-100 bg-white shadow-xl text-red-600 text-xs max-w-xs animate-in slide-in-from-bottom-2">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                    <div className="flex-1">{error}</div>
+                  </div>
+                </div>
+              )}
           </div>
         </div>
       )}
-
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(139, 0, 0, 0.1); border-radius: 20px; }
-        .font-tibetan { font-feature-settings: "tibt" 1; text-rendering: optimizeLegibility; }
-        
-        * {
-          animation: none !important;
-          transition: none !important;
-          transition-duration: 0ms !important;
-          animation-duration: 0ms !important;
-        }
-        
-        html, body {
-          scroll-behavior: auto !important;
-        }
-
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px) scale(0.95); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        .animate-in {
-          animation: fadeIn 0.2s ease-out !important;
-        }
-      `}</style>
+      {!isInputVisible && (
+        <button onClick={() => setIsInputVisible(true)} className="fixed bottom-12 right-12 w-14 h-14 bg-himalaya-red text-himalaya-gold rounded-2xl shadow-2xl flex items-center justify-center z-[400] transition-transform hover:scale-110 active:scale-90"><PenTool size={24} /></button>
+      )}
     </div>
   );
 };
