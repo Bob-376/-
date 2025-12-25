@@ -29,7 +29,6 @@
       body {
         background-color: #F9F7E8;
         font-family: 'Noto Sans Tibetan', sans-serif;
-        scroll-behavior: smooth;
       }
       .custom-scrollbar::-webkit-scrollbar {
         width: 6px;
@@ -52,6 +51,11 @@
       .no-scrollbar {
         -ms-overflow-style: none;  /* IE and Edge */
         scrollbar-width: none;  /* Firefox */
+      }
+      
+      /* GLOBAL SILENCE RULE */
+      * {
+        scroll-behavior: auto !important;
       }
     </style>
   <script type="importmap">
