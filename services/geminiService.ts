@@ -7,32 +7,33 @@ let chatSession: Chat | null = null;
 const getSystemInstruction = (memory: ProjectMemory | null) => {
   const memoryContext = memory 
     ? `
-[LITERARY PROJECT CONTINUITY - ACTIVE ARCHIVE]
-Current Project: "${memory.projectName || '未命名史诗'}"
-Status: 连续性引擎已连接 (Continuity Engine Linked)
+[EPIC CONTINUITY ENGINE - HIGH CAPACITY]
+Current Project: "${memory.projectName || '未命名宏篇'}"
+Scale Target: 50,000+ Tshegs (Long-form Epic)
 
 ESTABLISHED CANON:
 - STYLE MIRROR: ${memory.styleProfile || '正在捕获创作基因...'}
 - NARRATIVE ARC: ${memory.narrativeProgress || '初期构思阶段'}
 - CORE LORE/FACTS: ${memory.keyCitations.length > 0 ? memory.keyCitations.join('; ') : '尚未建立核心引用'}
 
-CRITICAL INSTRUCTION: You are in a state of PERMANENT CONTINUITY. Every sentence you output must honor the existing Style Mirror and Narrative Arc. 
+CRITICAL INSTRUCTION: You are the lead architect of a 50,000-tsheg epic. 
+1. Maintain extreme consistency across vast word counts.
+2. Every segment must be high-density, rich in Himalayan imagery, and structurally sound.
+3. NEVER truncate. If a chapter needs 5,000 tshegs, write 5,000 tshegs.
 ` 
-    : "\n[NEW PROJECT INITIALIZED]: Observe the user's writing closely to establish a Style Mirror and Narrative Arc.";
+    : "\n[NEW EPIC INITIALIZED]: Prepare for a 50,000-tsheg long-form literary journey. Observe the user's style to build a permanent mirror.";
 
   return `
 You are the "Master Literati of the Highlands" (བརྩམ་ཆོས་མཁས་导ང་། / 文坛宗师)。You specialize in composing massive, high-fidelity epics.
 
-CRITICAL DIRECTIVE ON OUTPUT VOLUME (TSHEG COUNT):
-The user defines text volume by the number of **Tshegs** (ཚེག།). Drafts can reach up to 50,000 tshegs.
-Your response MUST be proportional to the input's weight. 
-- If the user provides a large draft for polishing, do NOT provide a summary. Provide the FULL, polished prose.
-- NEVER truncate. NEVER summarize unless explicitly asked.
+POETIC DIRECTIVE (སྙན་ངག་གི་སྲོག):
+- Your prose must vibrate with the resonance of the Himalayas. 
+- Use metaphors of snow, eagles, ancient temples, and celestial light.
 
-PROSE QUALITY & STRUCTURE:
-1. ATMOSPHERE: Use rich, evocative Tibetan and Chinese literary devices. Ensure cultural authenticity.
-2. CONTINUITY: Adhere strictly to the established Project Memory.
-3. OUTPUT FORMAT: Begin IMMEDIATELY with the prose.
+OUTPUT VOLUME POLICY:
+The user is writing a novel targeting 50,000 Tshegs. Your responses must match this ambition.
+- Produce substantial chapters. 
+- Maintain a grand, symphonic tone throughout.
 
 ${memoryContext}
 
@@ -43,13 +44,13 @@ COLOR-CODED NARRATIVE MARKS:
 
 REQUIRED RESPONSE FOOTER:
 1. ---
-2. [MASTER'S ANALYSIS]: Brief professional critique.
+2. [MASTER'S ANALYSIS]: A profound critique of the draft's "spirit" (རྣམ་ཤེས།).
 3. [MEMORY_SYNC] 
    Project: [Updated Project Name]
    Style: [Refined Style Profile Summary]
    Chapter: [Current narrative position]
-   Lore: [One crucial fact to remember]
-4. [CREATIVE ADVICE]: Specific technical writing insight.
+   Lore: [One crucial fact to remember for long-term consistency]
+4. [CREATIVE ADVICE]: A technical "Sutra" (མདོ།) for the author's marathon journey.
 `;
 };
 
@@ -58,10 +59,6 @@ const isQuotaExhausted = (error: any): boolean => {
   const message = String(error.message || "").toUpperCase();
   const code = error.code || error.status;
   if (message.includes("RESOURCE_EXHAUSTED") || message.includes("429") || message.includes("QUOTA") || code === 429) return true;
-  try {
-    const parsed = JSON.parse(error.message);
-    if (parsed.error?.code === 429 || parsed.error?.status === "RESOURCE_EXHAUSTED") return true;
-  } catch (e) {}
   return false;
 };
 
@@ -82,6 +79,9 @@ export const sendMessageStream = async (
     config: {
       systemInstruction: getSystemInstruction(memory),
       tools: [{ googleSearch: {} }],
+      // Allow for very long output sequences for novel segments
+      maxOutputTokens: 16384,
+      thinkingConfig: { thinkingBudget: 4096 }
     },
     history: history,
   });
@@ -109,22 +109,14 @@ export const getLookupAnalysis = async (snippet: string): Promise<LookupResult> 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
-      contents: `Perform a deep philological and cultural analysis of the Tibetan text snippet: "${snippet}".
-      
-      Requirements:
-      1. Provide an elegant, literary Chinese translation that captures the hidden nuances.
-      2. Explain the etymology (if applicable) and cultural resonance of the terms.
-      3. Suggest how this snippet might be used to enhance epic storytelling (atmosphere/imagery).
-      
-      Format your response with clear headers: [宗师译文], [渊源解说], [创作启发]. Keep it concise but profound.
-      Use Google Search if the snippet references specific historical figures, monasteries, or rare deities.`,
+      contents: `Perform a deep philological and cultural analysis of the Tibetan text snippet: "${snippet}".`,
       config: {
         temperature: 0.1,
         tools: [{ googleSearch: {} }],
       }
     });
 
-    const text = response.text || "宗师无言。未获有效解析。";
+    const text = response.text || "宗师无言。";
     return {
       text,
       groundingChunks: response.candidates?.[0]?.groundingMetadata?.groundingChunks
@@ -132,7 +124,6 @@ export const getLookupAnalysis = async (snippet: string): Promise<LookupResult> 
   } catch (error: any) {
     if (isQuotaExhausted(error)) return { text: "QUOTA_EXHAUSTED" };
     if (isInvalidKey(error)) return { text: "INVALID_KEY" };
-    console.error("Lookup Error:", error);
     return { text: "ERROR_OCCURRED" };
   }
 };
