@@ -4,12 +4,12 @@ import {
   Send, Loader2, Feather, RotateCcw, Plus, Minus, Zap, AlertCircle, BookOpen,
   GripHorizontal, Maximize2, Layout, PenTool, X, ChevronUp, ChevronDown, MoveRight, 
   History, ScrollText, Key, ExternalLink, Flame, Minimize2, Settings, RefreshCw, Type,
-  Sparkles, Pen, Compass, Wand2, Stars, Gem, Maximize
+  Sparkles, Pen, Compass, Wand2, Stars, Gem, Maximize, Languages, Info, Search
 } from 'lucide-react';
 import Header from './components/Header';
 import ChatMessage from './components/ChatMessage';
 import { Message } from './types';
-import { startNewChat, sendMessageToSession, resetChat } from './services/geminiService';
+import { startNewChat, sendMessageToSession, resetChat, quickExplain } from './services/geminiService';
 
 const STORAGE_KEY_MESSAGES = 'himalaya_v2_messages';
 const STORAGE_KEY_POS = 'himalaya_ws_pos';
@@ -42,6 +42,10 @@ const App: React.FC = () => {
   const [isInputVisible, setIsInputVisible] = useState(true);
   const [isMaximized, setIsMaximized] = useState(false);
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
+
+  // Selection/Explanation state
+  const [selection, setSelection] = useState<{ text: string, x: number, y: number } | null>(null);
+  const [explanation, setExplanation] = useState<{ text: string, loading: boolean } | null>(null);
 
   const [wsPos, setWsPos] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY_POS);
@@ -89,6 +93,51 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Handle Text Selection
+  const handleTextSelection = useCallback((e: MouseEvent) => {
+    const sel = window.getSelection();
+    if (sel && sel.toString().trim().length > 0) {
+      try {
+        const range = sel.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        
+        // Safety check to ensure the selection isn't just whitespace or UI buttons
+        if (rect.width > 0 && rect.height > 0) {
+          setSelection({
+            text: sel.toString().trim(),
+            x: rect.left + rect.width / 2,
+            y: rect.top - 10
+          });
+        }
+      } catch (err) {
+        // Selection range might be invalid or detached
+      }
+    } else {
+      // Don't clear if clicking inside the explanation bubble
+      const target = e.target as HTMLElement;
+      if (!target.closest('.explanation-bubble')) {
+        setSelection(null);
+        setExplanation(null);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('mouseup', handleTextSelection);
+    return () => document.removeEventListener('mouseup', handleTextSelection);
+  }, [handleTextSelection]);
+
+  const handleExplain = async (type: 'explain' | 'translate') => {
+    if (!selection) return;
+    setExplanation({ text: "", loading: true });
+    try {
+      const result = await quickExplain(selection.text, type);
+      setExplanation({ text: result, loading: false });
+    } catch (err) {
+      setExplanation({ text: "རེ་ཞིག་འགྲེལ་བཤད་གནང་མ་ཐུབ། (Unable to explain at the moment)", loading: false });
+    }
+  };
+
   const handleOpenKeyDialog = async () => {
     if (window.aistudio) {
       await window.aistudio.openSelectKey();
@@ -119,9 +168,9 @@ const App: React.FC = () => {
       }
       if (resizing.direction.includes('s')) newH = Math.max(300, resizing.initialH + dy);
       if (resizing.direction.includes('n')) {
-        const deltaN = Math.min(resizing.initialH - 300, dy);
-        newH = resizing.initialH - deltaN;
-        newY = resizing.initialY + deltaN;
+        const BuilderDeltaN = Math.min(resizing.initialH - 300, dy);
+        newH = resizing.initialH - BuilderDeltaN;
+        newY = resizing.initialY + BuilderDeltaN;
       }
 
       setWsSize({ width: newW, height: newH });
@@ -310,6 +359,59 @@ const App: React.FC = () => {
         </div>
       </main>
 
+      {/* Floating Selection Menu */}
+      {selection && (
+        <div 
+          className="fixed z-[1000] -translate-x-1/2 flex flex-col items-center pointer-events-auto explanation-bubble"
+          style={{ left: selection.x, top: selection.y - 10 }}
+          onMouseUp={(e) => e.stopPropagation()}
+        >
+          {!explanation && (
+            <div className="flex items-center gap-1 bg-himalaya-dark text-white p-1 rounded-xl shadow-2xl border border-white/20">
+              <button 
+                onClick={() => handleExplain('explain')}
+                className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/10 rounded-lg text-[10px] font-bold uppercase tracking-widest border-r border-white/10"
+              >
+                <Info size={12} className="text-himalaya-gold" />
+                <span>研注 བརྡ་འགྲེལ།</span>
+              </button>
+              <button 
+                onClick={() => handleExplain('translate')}
+                className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/10 rounded-lg text-[10px] font-bold uppercase tracking-widest"
+              >
+                <Languages size={12} className="text-himalaya-gold" />
+                <span>翻译 ལོ་ཙཱ།</span>
+              </button>
+            </div>
+          )}
+
+          {explanation && (
+            <div className="mt-2 w-80 bg-white border-2 border-himalaya-gold rounded-2xl shadow-2xl p-4 overflow-hidden animate-in fade-in zoom-in duration-200">
+               <div className="flex items-center justify-between mb-2 border-b border-gray-100 pb-2">
+                  <span className="text-[10px] font-black text-himalaya-red uppercase tracking-widest flex items-center gap-2">
+                    <Search size={10} /> {explanation.loading ? '正在研读...' : '宗师研注'}
+                  </span>
+                  <button onClick={() => { setExplanation(null); setSelection(null); }} className="text-gray-300 hover:text-red-500">
+                    <X size={14} />
+                  </button>
+               </div>
+               
+               {explanation.loading ? (
+                 <div className="flex flex-col items-center py-6 gap-3">
+                    <Loader2 size={24} className="animate-spin text-himalaya-gold" />
+                    <span className="text-[10px] font-bold text-gray-400 italic">正在翻阅经卷...</span>
+                 </div>
+               ) : (
+                 <div className="text-sm text-himalaya-dark leading-relaxed font-tibetan max-h-60 overflow-y-auto custom-scrollbar whitespace-pre-wrap pr-2">
+                    {explanation.text}
+                 </div>
+               )}
+            </div>
+          )}
+          <div className="w-3 h-3 bg-himalaya-dark rotate-45 -mt-1.5 border-r border-b border-white/20" />
+        </div>
+      )}
+
       {/* Floating Buttons Bar */}
       <div className="fixed bottom-12 left-12 right-12 z-[500] pointer-events-none flex justify-between items-end">
         <div className="flex flex-col gap-4 pointer-events-auto">
@@ -334,12 +436,6 @@ const App: React.FC = () => {
               <PenTool size={32} />
             </button>
           )}
-          <button 
-            onClick={() => window.scrollTo({ top: 0, behavior: 'auto' })}
-            className="w-12 h-12 bg-white text-gray-400 rounded-xl shadow-xl border border-gray-100 flex items-center justify-center"
-          >
-            <ChevronUp size={24} />
-          </button>
         </div>
       </div>
 
@@ -474,6 +570,14 @@ const App: React.FC = () => {
         
         html, body {
           scroll-behavior: auto !important;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px) scale(0.95); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .animate-in {
+          animation: fadeIn 0.2s ease-out !important;
         }
       `}</style>
     </div>

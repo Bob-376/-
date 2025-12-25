@@ -33,11 +33,9 @@ async function withRetry<T>(
     if (retries > 0 && isQuotaError) {
       console.warn(`Quota exceeded or Rate limit hit. Retrying in ${delay}ms... (${retries} retries left)`);
       await new Promise((resolve) => setTimeout(resolve, delay));
-      // Exponential backoff
       return withRetry(fn, retries - 1, delay * 2);
     }
     
-    // Check for "Requested entity was not found" which might imply API key issues
     if (errorMsg.includes("Requested entity was not found")) {
       throw new Error("API_KEY_INVALID_OR_NOT_FOUND");
     }
@@ -96,6 +94,33 @@ export const sendMessageToSession = async (
   } catch (error: any) {
     console.error("Gemini Scribe Error:", error);
     throw error;
+  }
+};
+
+export const quickExplain = async (text: string, type: 'explain' | 'translate'): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  // Refined prompt to prioritize Tibetan first
+  const prompt = type === 'explain' 
+    ? `You are a master of Tibetan linguistics. For the following text: "${text}", provide:
+       1. A deep scholarly explanation in pure Tibetan (མངོན་བརྗོད་དང་རིགས་ལམ་གྱི་ལམ་ནས་འགྲེལ་བཤད།) as the priority.
+       2. An accurate and elegant translation into Simplified Chinese.
+       Structure the response with the Tibetan explanation FIRST, followed by the Chinese explanation. Use clear headers.`
+    : `Translate the following text into elegant, literary simplified Chinese: "${text}". Provide a brief Tibetan synonym if applicable. Tibetan context first.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+      config: {
+        systemInstruction: "You are a scholarly Tibetan-Chinese translator and philologist. You prioritize Tibetan linguistic depth.",
+        maxOutputTokens: 2048
+      }
+    });
+    return response.text || "No explanation available.";
+  } catch (error) {
+    console.error("Quick Explain Error:", error);
+    return "Error occurred while fetching explanation.";
   }
 };
 
