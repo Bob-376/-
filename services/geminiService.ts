@@ -95,31 +95,32 @@ export const sendMessageToSession = async (
 export const quickExplain = async (text: string, type: 'explain' | 'translate'): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  const prompt = `You are a world-renowned philologist of the Tibetan Plateau. 
-Analyze the provided segment: "${text}".
+  const prompt = `As the 'Grand Philologist of the Snowy Peaks', provide an exceptionally scholarly and culturally sensitive trilingual analysis of this specific segment: "${text}".
 
-MANDATORY TRILINGUAL SCHOLARLY RESPONSE STRUCTURE:
+MANDATORY OUTPUT ARCHITECTURE (FOLLOW STRICT ORDER AND PROPORTION):
 
 ---TIBETAN_COMMENTARY---
-[Priority 1: Write an exhaustive, profound, and high-literary Tibetan commentary. Use honorifics and discuss the etymological and philosophical depth of the chosen words.]
+[CORE PRIORITY: Write an exhaustive, poetic, and technically profound analysis in Literary Tibetan. This section MUST be the primary focus, demonstrating deep scholarly depth and cultural sensitivity. Discuss etymological roots, honorific nuances, and the philosophical weight of the terminology. Aim for maximum verbosity and scholarly rigor.]
 
 ---CHINESE_TRANSLATION---
-[Priority 2: Provide an elegant, literary Simplified Chinese translation that captures the spiritual weight of the original.]
+[Provide an elegant, culturally sensitive Simplified Chinese translation that captures the spiritual dignity and philosophical depth of the original text.]
 
 ---ENGLISH_TRANSLATION---
-[Priority 3: Provide a precise English translation with a brief note on grammatical or historical context.]
+[Provide a precise, scholarly English translation with a focus on historical accuracy and cultural nuance.]
 
-RULES:
-- Start with the Tibetan section. It must be the most substantial.
-- Do not use any other headers or conversational fillers.
-- Adhere strictly to the markers for UI parsing.`;
+STRICT INSTRUCTIONS:
+1. The Tibetan section MUST be presented first.
+2. The Tibetan section MUST be significantly more detailed and visually dominant in terms of word count.
+3. Prioritize scholarly depth and cultural sensitivity in every sentence.
+4. Use only the provided markers (---HEADER---) for parsing.
+5. No introductory or concluding remarks.`;
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
-        systemInstruction: "You are the 'Imperial Scholar'. Your communication is trilingual, always prioritizing the profound beauty of literary Tibetan above all else.",
+        systemInstruction: "You are the 'Imperial Scholar and Custodian of the Golden Lexicon'. You provide deep, culturally sensitive, and scholarly explanations of Tibetan literature. Your output is trilingual, but you prioritize the profound beauty, technical depth, and cultural sanctity of Literary Tibetan above all other languages.",
         maxOutputTokens: 2048
       }
     });

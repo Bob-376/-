@@ -20,12 +20,11 @@ const Header: React.FC<HeaderProps> = ({
   epicGoal
 }) => {
   const [mode, setMode] = useState<'work' | 'rest'>('work');
-  const [timeLeft, setTimeLeft] = useState(60 * 60); // Updated to 60 minutes
+  const [timeLeft, setTimeLeft] = useState(60 * 60);
   const [isActive, setIsActive] = useState(false);
   const [wasActiveBeforeHidden, setWasActiveBeforeHidden] = useState(false);
   const timerRef = useRef<number | null>(null);
 
-  // Core Timer Logic
   useEffect(() => {
     if (isActive && timeLeft > 0) {
       timerRef.current = window.setInterval(() => {
@@ -34,14 +33,12 @@ const Header: React.FC<HeaderProps> = ({
     } else if (timeLeft === 0) {
       setIsActive(false);
       if (timerRef.current) clearInterval(timerRef.current);
-      // Optional: notify user that session is over
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isActive, timeLeft]);
 
-  // Visibility Change Handling (Leaving the computer/tab)
   useEffect(() => {
     const handleVisibility = () => {
       if (document.hidden) {
@@ -50,7 +47,6 @@ const Header: React.FC<HeaderProps> = ({
           setWasActiveBeforeHidden(true);
         }
       } else {
-        // When coming back, if it was running, we could auto-resume
         if (wasActiveBeforeHidden) {
           setIsActive(true);
           setWasActiveBeforeHidden(false);
@@ -61,18 +57,14 @@ const Header: React.FC<HeaderProps> = ({
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [isActive, wasActiveBeforeHidden]);
 
-  // Activity Detection (Starting work resumes timer)
   useEffect(() => {
     const handleActivity = () => {
-      // If we are in work mode, not hidden, and not currently running, auto-start on interaction
       if (!isActive && mode === 'work' && !document.hidden && timeLeft > 0) {
         setIsActive(true);
       }
     };
-
     window.addEventListener('keydown', handleActivity);
     window.addEventListener('mousedown', handleActivity);
-    
     return () => {
       window.removeEventListener('keydown', handleActivity);
       window.removeEventListener('mousedown', handleActivity);
@@ -81,7 +73,7 @@ const Header: React.FC<HeaderProps> = ({
 
   const toggleTimer = () => {
     setIsActive(!isActive);
-    setWasActiveBeforeHidden(false); // Manual override clears auto-resume memory
+    setWasActiveBeforeHidden(false);
   };
   
   const resetTimer = () => {
@@ -95,7 +87,7 @@ const Header: React.FC<HeaderProps> = ({
     setMode(newMode);
     setIsActive(false);
     setWasActiveBeforeHidden(false);
-    setTimeLeft(60 * 60); // Both modes set to 60 minutes as requested
+    setTimeLeft(60 * 60);
   };
 
   const formatTime = (seconds: number) => {
@@ -110,22 +102,22 @@ const Header: React.FC<HeaderProps> = ({
     <header className="bg-himalaya-red text-himalaya-cream p-3 shadow-xl border-b-4 border-himalaya-gold sticky top-0 z-[100]">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 px-2">
         
-        {/* Left Section: Logo & Info */}
+        {/* Left Section: Clean Logo & Title */}
         <div className="flex items-center gap-3 shrink-0">
           <div className="w-10 h-10 rounded-lg bg-himalaya-gold flex items-center justify-center shadow-lg">
              <Feather className="text-himalaya-red w-6 h-6" />
           </div>
           <div className="flex flex-col">
             <h1 className="text-lg font-bold tracking-widest font-tibetan leading-tight">
-              བོད་ཀྱི་ཡིག་རིགས་བཙལ་བཤེར།
+              བོད་ཀྱི་ཡིག་རིགས་མཛད་པོ།
             </h1>
             <span className="text-[9px] text-himalaya-gold font-bold uppercase tracking-wider opacity-80">
-              Tibetan Scribe
+              Tibetan Master Scribe
             </span>
           </div>
         </div>
 
-        {/* Center Section: Compact Integrated Counter */}
+        {/* Center Section: Progress Counter */}
         <div className="flex items-center gap-4 bg-black/20 px-4 py-1.5 rounded-xl border border-white/5 shadow-inner flex-1 max-w-md">
           <div className="flex flex-col items-start min-w-[90px]">
             <div className="flex items-baseline gap-1">
@@ -139,25 +131,22 @@ const Header: React.FC<HeaderProps> = ({
               />
             </div>
           </div>
-          
           <div className="w-px h-6 bg-white/10" />
-          
           <div className="flex flex-col items-start">
             <div className="flex items-baseline gap-1">
               <span className="text-lg font-black text-white leading-none tabular-nums">{totalTshegs.toLocaleString()}</span>
-              <span className="text-[7px] font-bold text-white/40 uppercase tracking-tighter">ཚེག། (Tshegs)</span>
+              <span className="text-[7px] font-bold text-white/40 uppercase tracking-tighter">ཚེག།</span>
             </div>
-            <span className="text-[6px] font-black uppercase tracking-widest text-white/20">PROGRESS</span>
+            <span className="text-[6px] font-black uppercase tracking-widest text-white/20">SCRIBED TSHEGS</span>
           </div>
         </div>
 
-        {/* Right Section: Timer & Nav */}
+        {/* Right Section: Timer & Controls */}
         <div className="flex items-center gap-2">
-          {/* Timer - Smaller */}
           <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-xl border border-white/5">
              <div className="flex flex-col items-center mr-1">
                <span className={`text-[6px] font-black uppercase tracking-tighter ${mode === 'work' ? 'text-himalaya-gold' : 'text-green-400'}`}>
-                 {mode === 'work' ? '专注' : '休憩'}
+                 {mode === 'work' ? 'Focus' : 'Rest'}
                </span>
                <div className="text-base font-mono font-bold w-12 text-center tabular-nums">
                   {formatTime(timeLeft)}
@@ -167,10 +156,10 @@ const Header: React.FC<HeaderProps> = ({
                <button onClick={toggleTimer} className={`p-1 transition-colors ${isActive ? 'text-himalaya-gold' : 'text-white/60 hover:text-white'}`}>
                  {isActive ? <Pause size={14} /> : <Play size={14} fill="currentColor" />}
                </button>
-               <button onClick={switchMode} className="p-1 text-white/60 hover:text-himalaya-gold transition-colors" title="切换模式">
+               <button onClick={switchMode} className="p-1 text-white/60 hover:text-himalaya-gold transition-colors" title="Switch Mode">
                  {mode === 'work' ? <Coffee size={14} /> : <Pen size={14} />}
                </button>
-               <button onClick={resetTimer} className="p-1 text-white/40 hover:text-white transition-colors" title="重置时间">
+               <button onClick={resetTimer} className="p-1 text-white/40 hover:text-white transition-colors" title="Reset Timer">
                  <RotateCcw size={12} />
                </button>
              </div>
@@ -178,19 +167,16 @@ const Header: React.FC<HeaderProps> = ({
 
           <div className="w-px h-6 bg-white/10 mx-1"></div>
 
-          {/* Nav Buttons */}
           <nav className="flex items-center gap-1.5">
-            <button onClick={onResetLayout} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5 group" title="重置布局">
+            <button onClick={onResetLayout} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5 group" title="Reset Layout">
               <LayoutIcon size={16} />
-              <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">布局</span>
+              <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">Layout</span>
             </button>
-            
-            <button onClick={onToggleMemory} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5" title="记忆库">
+            <button onClick={onToggleMemory} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5" title="Epic Memory">
               <BrainCircuit size={16} />
-              <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">记忆</span>
+              <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">Memory</span>
             </button>
-            
-            <button onClick={onReset} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10" title="重置对话">
+            <button onClick={onReset} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10" title="Clear Scribe">
               <RefreshCcw size={16} />
             </button>
           </nav>

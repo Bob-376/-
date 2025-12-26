@@ -4,7 +4,7 @@ import {
   Loader2, Feather, RotateCcw, Plus, Minus, AlertCircle, PenTool, X, MoveRight, 
   Key, Flame, Minimize2, Stars, Maximize, Languages, Info, Search,
   Trophy, BarChart3, Milestone, BrainCircuit, Compass, Pen, Maximize2, RefreshCw, Sparkles,
-  BookOpen, Quote
+  BookOpen, Quote, Bold, Italic, Underline as UnderlineIcon, Copy, Check
 } from 'lucide-react';
 import Header from './components/Header';
 import ChatMessage from './components/ChatMessage';
@@ -43,6 +43,14 @@ const App: React.FC = () => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
+  const [isCopied, setIsCopied] = useState(false);
+
+  // Formatting state
+  const [activeFormats, setActiveFormats] = useState({
+    bold: false,
+    italic: false,
+    underline: false
+  });
 
   // Selection/Explanation state
   const [selection, setSelection] = useState<{ text: string, x: number, y: number, isInsideWorkshop: boolean } | null>(null);
@@ -107,9 +115,20 @@ const App: React.FC = () => {
     }
   };
 
+  const updateFormatState = useCallback(() => {
+    setActiveFormats({
+      bold: document.queryCommandState('bold'),
+      italic: document.queryCommandState('italic'),
+      underline: document.queryCommandState('underline')
+    });
+  }, []);
+
   const handleTextSelection = useCallback((e: MouseEvent) => {
     const sel = window.getSelection();
     const target = e.target as HTMLElement;
+
+    // Check formatting state whenever selection changes
+    updateFormatState();
 
     // If text is selected, show the selection toolbar
     if (sel && sel.toString().trim().length > 0) {
@@ -128,21 +147,36 @@ const App: React.FC = () => {
         }
       } catch (err) {}
     } else {
-      // If no text is selected:
-      // 1. If we are NOT showing an explanation, hide the selection bubble on any click outside
-      // 2. If we ARE showing an explanation, DO NOT hide it automatically (requires manual close)
       if (!explanation) {
         if (!target.closest('.explanation-bubble') && !target.closest('#workshop-toolbar-research')) {
           setSelection(null);
         }
       }
     }
-  }, [explanation]);
+  }, [explanation, updateFormatState]);
 
   useEffect(() => {
     document.addEventListener('mouseup', handleTextSelection);
     return () => document.removeEventListener('mouseup', handleTextSelection);
   }, [handleTextSelection]);
+
+  const handleFormat = (command: string) => {
+    document.execCommand(command, false);
+    updateFormatState();
+    if (editorRef.current) {
+      setInputText(editorRef.current.innerText);
+    }
+  };
+
+  const handleCopyAll = () => {
+    if (editorRef.current) {
+      const text = editorRef.current.innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+      });
+    }
+  };
 
   const handleExplain = async (type: 'explain' | 'translate') => {
     if (!selection) return;
@@ -584,6 +618,45 @@ const App: React.FC = () => {
                 </button>
               </div>
 
+              {/* Formatting Toolbar */}
+              <div className="flex items-center gap-1 ml-3 bg-white px-3 py-1 rounded-xl border border-gray-200 shadow-sm">
+                <button 
+                  onClick={() => handleFormat('bold')} 
+                  className={`p-1.5 rounded-lg transition-colors ${activeFormats.bold ? 'bg-himalaya-red text-himalaya-gold' : 'text-gray-400 hover:bg-gray-100'}`}
+                  title="加粗 Bold"
+                >
+                  <Bold size={14} />
+                </button>
+                <button 
+                  onClick={() => handleFormat('italic')} 
+                  className={`p-1.5 rounded-lg transition-colors ${activeFormats.italic ? 'bg-himalaya-red text-himalaya-gold' : 'text-gray-400 hover:bg-gray-100'}`}
+                  title="斜体 Italic"
+                >
+                  <Italic size={14} />
+                </button>
+                <button 
+                  onClick={() => handleFormat('underline')} 
+                  className={`p-1.5 rounded-lg transition-colors ${activeFormats.underline ? 'bg-himalaya-red text-himalaya-gold' : 'text-gray-400 hover:bg-gray-100'}`}
+                  title="下划线 Underline"
+                >
+                  <UnderlineIcon size={14} />
+                </button>
+              </div>
+
+              {/* Copy All Button */}
+              <div className="flex items-center gap-1 ml-3 bg-white px-3 py-1 rounded-xl border border-gray-200 shadow-sm">
+                <button 
+                  onClick={handleCopyAll} 
+                  className={`p-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${isCopied ? 'text-green-600' : 'text-gray-400 hover:bg-gray-100 hover:text-himalaya-red'}`}
+                  title="复制全文 Copy All"
+                >
+                  {isCopied ? <Check size={14} /> : <Copy size={14} />}
+                  <span className="text-[10px] font-black uppercase tracking-tighter hidden lg:inline">
+                    {isCopied ? '已复制' : '复制全文'}
+                  </span>
+                </button>
+              </div>
+
               {/* Research Button (Accessible when text selected in workshop) */}
               {selection?.isInsideWorkshop && !explanation && (
                 <button 
@@ -601,10 +674,10 @@ const App: React.FC = () => {
                <button 
                   onClick={() => handleSend()} 
                   disabled={!inputText.trim() || isLoading}
-                  className={`h-11 px-8 rounded-2xl flex items-center gap-3 shadow-xl border-2 transition-all active:scale-95 ${isLoading ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-wait' : 'bg-himalaya-red text-himalaya-gold border-himalaya-gold hover:brightness-110'}`}
+                  className={`h-9 px-4 rounded-xl flex items-center gap-2 shadow-lg border transition-all active:scale-95 ${isLoading ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-wait' : 'bg-himalaya-red text-himalaya-gold border-himalaya-gold/30 hover:brightness-110'}`}
                 >
-                  {isLoading ? <Loader2 className="animate-spin" size={18} /> : <Compass size={18} />}
-                  <span className="font-black text-sm uppercase tracking-widest">落笔 Scribe</span>
+                  {isLoading ? <Loader2 className="animate-spin" size={14} /> : <Compass size={14} />}
+                  <span className="font-black text-xs uppercase tracking-widest whitespace-nowrap">落笔 Scribe</span>
                 </button>
             </div>
 
@@ -628,6 +701,8 @@ const App: React.FC = () => {
                 style={{ fontSize: `${fontSize}px` }} 
                 className="w-full h-full outline-none font-tibetan leading-[2.4] overflow-y-auto custom-scrollbar text-himalaya-dark px-8 pb-32 selection:bg-himalaya-gold/40 scroll-smooth text-justify" 
                 onInput={() => setInputText(editorRef.current?.innerText || "")}
+                onKeyUp={updateFormatState}
+                onMouseUp={updateFormatState}
               />
               {!inputText && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-5 gap-6">
