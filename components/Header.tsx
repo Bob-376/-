@@ -1,11 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { RefreshCcw, BrainCircuit, Play, Pause, RotateCcw, Coffee, PenTool as Pen, Layout as LayoutIcon, Feather } from 'lucide-react';
+import { RefreshCcw, BrainCircuit, Play, Pause, RotateCcw, Coffee, PenTool as Pen, Layout as LayoutIcon, Feather, Search, ArrowDownToLine } from 'lucide-react';
 
 interface HeaderProps {
   onReset: () => void;
   onResetLayout: () => void;
   onToggleMemory: () => void;
+  onToggleAutoScroll: () => void;
+  autoScrollEnabled: boolean;
   totalCharacters: number;
   totalTshegs: number;
   epicGoal: number;
@@ -14,7 +16,9 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ 
   onReset, 
   onResetLayout, 
-  onToggleMemory, 
+  onToggleMemory,
+  onToggleAutoScroll,
+  autoScrollEnabled,
   totalCharacters,
   totalTshegs,
   epicGoal
@@ -105,14 +109,14 @@ const Header: React.FC<HeaderProps> = ({
         {/* Left Section: Clean Logo & Title */}
         <div className="flex items-center gap-3 shrink-0">
           <div className="w-10 h-10 rounded-lg bg-himalaya-gold flex items-center justify-center shadow-lg">
-             <Feather className="text-himalaya-red w-6 h-6" />
+             <Search className="text-himalaya-red w-6 h-6" />
           </div>
           <div className="flex flex-col">
             <h1 className="text-lg font-bold tracking-widest font-tibetan leading-tight">
-              བོད་ཀྱི་ཡིག་རིགས་མཛད་པོ།
+              ཤེས་རིག་བཙལ་བཤེར་མ་ལག
             </h1>
             <span className="text-[9px] text-himalaya-gold font-bold uppercase tracking-wider opacity-80">
-              Tibetan Master Scribe
+              Intelligent Retrieval System
             </span>
           </div>
         </div>
@@ -137,7 +141,7 @@ const Header: React.FC<HeaderProps> = ({
               <span className="text-lg font-black text-white leading-none tabular-nums">{totalTshegs.toLocaleString()}</span>
               <span className="text-[7px] font-bold text-white/40 uppercase tracking-tighter">ཚེག།</span>
             </div>
-            <span className="text-[6px] font-black uppercase tracking-widest text-white/20">SCRIBED TSHEGS</span>
+            <span className="text-[6px] font-black uppercase tracking-widest text-white/20">RETRIEVED TSHEGS</span>
           </div>
         </div>
 
@@ -168,15 +172,23 @@ const Header: React.FC<HeaderProps> = ({
           <div className="w-px h-6 bg-white/10 mx-1"></div>
 
           <nav className="flex items-center gap-1.5">
+            <button 
+              onClick={onToggleAutoScroll} 
+              className={`p-2 rounded-lg flex items-center gap-1.5 transition-all ${autoScrollEnabled ? 'bg-white/10 text-himalaya-gold' : 'bg-white/5 text-white/40 hover:text-white'}`} 
+              title={autoScrollEnabled ? "Disable Auto-Scroll" : "Enable Auto-Scroll"}
+            >
+              <ArrowDownToLine size={16} className={autoScrollEnabled ? 'animate-bounce' : ''} />
+              <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">Scroll</span>
+            </button>
             <button onClick={onResetLayout} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5 group" title="Reset Layout">
               <LayoutIcon size={16} />
               <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">Layout</span>
             </button>
-            <button onClick={onToggleMemory} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5" title="Epic Memory">
+            <button onClick={onToggleMemory} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5" title="Intelligence Memory">
               <BrainCircuit size={16} />
               <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">Memory</span>
             </button>
-            <button onClick={onReset} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10" title="Clear Scribe">
+            <button onClick={onReset} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10" title="Clear Context">
               <RefreshCcw size={16} />
             </button>
           </nav>

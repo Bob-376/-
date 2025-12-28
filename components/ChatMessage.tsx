@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState } from 'react';
 import { Message } from '../types';
 import { Bot, User, Copy, Trash2, Clock, ShieldCheck, Check } from 'lucide-react';
@@ -15,8 +14,9 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete 
   const countTshegs = (text: string) => (text.match(/་/g) || []).length;
   const currentTshegCount = useMemo(() => countTshegs(message.text), [message.text]);
 
-  const cleanText = (text: string) => {
+  const cleanTextForCopy = (text: string) => {
     return text
+      .replace(/<polish>|<\/polish>|<expand>|<\/expand>|<modify>|<\/modify>/g, "")
       .replace(/\[AUTO_CONTINUE_SIGNAL\]/g, "")
       .replace(/\[EPIC_CHAPTER_COMPLETE\]/g, "")
       .replace(/\[CONTINUE_SIGNAL\]/g, "")
@@ -25,18 +25,22 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete 
   };
 
   const handleCopy = () => {
-    const textToCopy = cleanText(message.text);
+    const textToCopy = cleanTextForCopy(message.text);
     navigator.clipboard.writeText(textToCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const formatMixedScript = (text: string) => {
-    const cleaned = cleanText(text);
+  const formatMixedScript = (text: string, highlightType?: 'polish' | 'expand' | 'modify') => {
     // Optimization: If text is very long, don't split excessively.
-    // For 50k characters, we use a slightly more efficient regex pattern.
-    const segments = cleaned.split(/([\u0F00-\u0FFF\s་]+)/g);
+    const segments = text.split(/([\u0F00-\u0FFF\s་]+)/g);
     
+    const highlightClasses = {
+      polish: 'bg-yellow-200/50 border-y border-amber-400/20 px-1 rounded-sm mx-0.5',
+      expand: 'bg-green-200/50 border-y border-emerald-400/20 px-1 rounded-sm mx-0.5',
+      modify: 'bg-blue-200/50 border-y border-blue-400/20 px-1 rounded-sm mx-0.5',
+    };
+
     return segments.map((s, i) => {
       if (!s) return null;
       const isTibetan = /[\u0F00-\u0FFF\s་]/.test(s);
@@ -49,6 +53,7 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete 
             ${isTibetan 
               ? 'font-tibetan text-[1.45em]' 
               : 'font-sans text-[1em] opacity-80'}
+            ${highlightType ? highlightClasses[highlightType] : ''}
           `}
         >
           {s}
@@ -57,10 +62,64 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete 
     });
   };
 
+  const parseAndRenderTags = (text: string) => {
+    const cleanedText = text
+      .replace(/\[CONTINUE_SIGNAL\]/g, "")
+      .replace(/\[COMPLETE\]/g, "")
+      .trim();
+
+    // Regex to capture the tag type and the content within it
+    const tagRegex = /<(polish|expand|modify)>(.*?)<\/\1>/gs;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = tagRegex.exec(cleanedText)) !== null) {
+      // Add text before the tag
+      if (match.index > lastIndex) {
+        parts.push({
+          type: 'text',
+          content: cleanedText.substring(lastIndex, match.index)
+        });
+      }
+      
+      // Add the highlighted part
+      parts.push({
+        type: match[1] as 'polish' | 'expand' | 'modify',
+        content: match[2]
+      });
+      
+      lastIndex = tagRegex.lastIndex;
+    }
+
+    // Add remaining text
+    if (lastIndex < cleanedText.length) {
+      parts.push({
+        type: 'text',
+        content: cleanedText.substring(lastIndex)
+      });
+    }
+
+    // If no tags were found, just return formatted plain text
+    if (parts.length === 0) {
+      return formatMixedScript(cleanedText);
+    }
+
+    return parts.map((part, index) => {
+      if (part.type === 'text') {
+        return <React.Fragment key={index}>{formatMixedScript(part.content)}</React.Fragment>;
+      } else {
+        return <React.Fragment key={index}>{formatMixedScript(part.content, part.type)}</React.Fragment>;
+      }
+    });
+  };
+
   const renderContent = (content: string) => {
     return (
       <div className="space-y-6 message-content text-himalaya-dark">
-        <div className="whitespace-pre-wrap flex flex-wrap items-baseline text-justify">{formatMixedScript(content)}</div>
+        <div className="whitespace-pre-wrap flex flex-wrap items-baseline text-justify">
+          {parseAndRenderTags(content)}
+        </div>
         
         {!isUser && !message.isStreaming && (
           <div className="flex flex-col items-center pt-10 border-t border-gray-100 gap-4">
