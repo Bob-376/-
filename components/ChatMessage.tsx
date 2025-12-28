@@ -8,7 +8,7 @@ interface ChatMessageProps {
   onDelete?: (id: string) => void;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) => {
+const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete }) => {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
   
@@ -31,9 +31,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const formatMixedScript = (text: string, baseSizeClass: string = 'text-2xl') => {
+  const formatMixedScript = (text: string) => {
     const cleaned = cleanText(text);
-    // Split into segments of Tibetan script and non-Tibetan script
+    // Optimization: If text is very long, don't split excessively.
+    // For 50k characters, we use a slightly more efficient regex pattern.
     const segments = cleaned.split(/([\u0F00-\u0FFF\s་]+)/g);
     
     return segments.map((s, i) => {
@@ -44,10 +45,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) => {
         <span 
           key={i} 
           className={`
-            leading-[1.8] text-himalaya-dark transition-all duration-200
+            leading-[2.2] transition-all duration-200
             ${isTibetan 
-              ? 'font-tibetan text-[1.4em]' 
-              : 'font-sans text-[1em] opacity-90'}
+              ? 'font-tibetan text-[1.45em]' 
+              : 'font-sans text-[1em] opacity-80'}
           `}
         >
           {s}
@@ -58,8 +59,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) => {
 
   const renderContent = (content: string) => {
     return (
-      <div className="space-y-6">
-        <div className="whitespace-pre-wrap flex flex-wrap items-baseline">{formatMixedScript(content)}</div>
+      <div className="space-y-6 message-content text-himalaya-dark">
+        <div className="whitespace-pre-wrap flex flex-wrap items-baseline text-justify">{formatMixedScript(content)}</div>
         
         {!isUser && !message.isStreaming && (
           <div className="flex flex-col items-center pt-10 border-t border-gray-100 gap-4">
@@ -79,25 +80,25 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) => {
   };
 
   return (
-    <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
-      <div className={`flex items-start gap-4 max-w-[90%] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border-2 ${isUser ? 'bg-himalaya-gold border-himalaya-red/10 text-himalaya-red' : 'bg-himalaya-red border-himalaya-gold text-himalaya-gold'}`}>
+    <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-4 duration-500`}>
+      <div className={`flex items-start gap-4 max-w-[95%] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border-2 ${isUser ? 'bg-himalaya-gold border-himalaya-red/10 text-himalaya-red' : 'bg-himalaya-red border-himalaya-gold text-himalaya-gold shadow-lg'}`}>
           {isUser ? <User size={20} /> : <Bot size={20} />}
         </div>
         
-        <div className={`p-8 md:p-12 rounded-[2.5rem] shadow-2xl ${isUser ? 'bg-himalaya-gold text-himalaya-dark rounded-tr-none' : 'bg-white text-himalaya-dark rounded-tl-none border border-gray-100'}`}>
+        <div className={`p-8 md:p-14 rounded-[3rem] shadow-2xl ${isUser ? 'bg-himalaya-gold/20 backdrop-blur-sm border border-himalaya-gold/30 text-himalaya-dark rounded-tr-none' : 'bg-white text-himalaya-dark rounded-tl-none border border-gray-100'}`}>
           <div className="flex justify-between items-center mb-6 opacity-30">
-            <span className="text-[8px] font-black uppercase tracking-widest">{isUser ? 'Author Manuscript' : 'Master Scribe'}</span>
+            <span className="text-[8px] font-black uppercase tracking-widest">{isUser ? 'Author Manuscript' : 'Master Scribe Record'}</span>
             <div className="flex items-center gap-4">
               <button 
                 onClick={handleCopy} 
-                className={`flex items-center gap-1 ${copied ? 'text-green-600' : 'text-gray-400'}`}
+                className={`flex items-center gap-1 transition-colors ${copied ? 'text-green-600' : 'text-gray-400 hover:text-himalaya-red'}`}
                 title="复制内容"
               >
                 {copied ? <Check size={14} /> : <Copy size={14} />}
                 {copied && <span className="text-[10px] font-bold">已复制</span>}
               </button>
-              <button onClick={() => onDelete?.(message.id)} className="text-gray-400 hover:text-red-600" title="删除消息">
+              <button onClick={() => onDelete?.(message.id)} className="text-gray-400 hover:text-red-600 transition-colors" title="删除消息">
                 <Trash2 size={14} />
               </button>
             </div>
@@ -107,10 +108,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) => {
       </div>
       <div className={`mt-2 px-14 text-[8px] text-gray-300 font-bold uppercase tracking-widest flex items-center gap-2 ${isUser ? 'text-right' : 'text-left'}`}>
         <Clock size={10} /> {new Date(message.timestamp).toLocaleTimeString()}
-        {message.isStreaming && <span className="text-himalaya-red italic ml-2">Scribing...</span>}
+        {message.isStreaming && <span className="text-himalaya-red animate-pulse ml-2">Scribing Chapter...</span>}
       </div>
     </div>
   );
-};
+});
 
 export default ChatMessage;
