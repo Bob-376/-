@@ -104,7 +104,7 @@ export const quickExplain = async (text: string, type: 'explain' | 'translate'):
   const prompt = `As the 'Grand Imperial Philologist', provide an authoritative, high-register scholarly analysis of the following segment: "${text}".
 
 STRICT ARCHITECTURAL REQUIREMENTS:
-1. TIBETAN_COMMENTARY: You MUST provide an extensive, profound explanation in Literary Tibetan (Chöke). This is the most important part. Be verbose and scholarly.
+1. TIBETAN_COMMENTARY: You MUST provide an extensive, profound explanation in Literary Tibetan (Chöke). This is the absolute priority. Be verbose and use ornate vocabulary.
 2. CHINESE_TRANSLATION: Provide an elegant, precise Chinese rendering.
 3. ENGLISH_TRANSLATION: Provide a clear academic English translation.
 
@@ -114,17 +114,18 @@ Format exactly as:
 ---CHINESE_TRANSLATION---
 [Elegant Chinese]
 ---ENGLISH_TRANSLATION---
-[Academic English]`;
+[Academic English]
+
+DO NOT omit any section. DO NOT add any other text outside these blocks.`;
 
   try {
-    // Adding explicit type parameter GenerateContentResponse to fix 'unknown' type inference on response
     const response = await withRetry<GenerateContentResponse>(() => ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
-        systemInstruction: "You are a Tibetan scholar of the highest order. Your priority is to produce profound Tibetan commentary. The Chinese translation is secondary and should be concise but accurate.",
+        systemInstruction: "You are a Tibetan scholar of the highest order. Your priority is to produce profound Tibetan commentary. Followed by accurate Chinese and English translations.",
         maxOutputTokens: 2048,
-        temperature: 0.3
+        temperature: 0.2
       }
     }));
     return response.text || "No explanation available.";

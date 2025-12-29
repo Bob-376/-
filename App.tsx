@@ -4,7 +4,7 @@ import {
   Loader2, Feather, RotateCcw, Plus, Minus, AlertCircle, PenTool, X, MoveRight, 
   Key, Flame, Minimize2, Stars, Maximize, Languages, Info, Search,
   Trophy, BarChart3, Milestone, BrainCircuit, Compass, Pen, Maximize2, RefreshCw, Sparkles,
-  BookOpen, Quote, Copy, Check, ChevronRight, Type, Wand2, Save, FolderOpen, Trash2, History, AlertTriangle, Bug
+  BookOpen, Quote, Copy, Check, ChevronRight, Type, Wand2, Save, FolderOpen, Trash2, History, AlertTriangle, Bug, Globe
 } from 'lucide-react';
 import Header from './components/Header';
 import ChatMessage from './components/ChatMessage';
@@ -121,8 +121,14 @@ const App: React.FC = () => {
     }
   }, [messages, autoScrollEnabled]);
 
+  /**
+   * Robust selection mechanism designed for complex scripts like Tibetan.
+   * Ensures that selection is accurately captured from the workshop editor.
+   */
   const handleTextSelection = useCallback((e: MouseEvent) => {
     const target = e.target as HTMLElement;
+    
+    // Safety check: Prevent interference when clicking UI overlays
     if (target.closest('.selection-menu') || target.closest('.research-drawer') || target.closest('.archive-popover') || target.closest('.error-overlay')) {
       return;
     }
@@ -132,16 +138,28 @@ const App: React.FC = () => {
       try {
         const range = sel.getRangeAt(0);
         const rect = range.getBoundingClientRect();
-        const isInsideWorkshop = editorRef.current?.contains(sel.anchorNode) || false;
+        
+        // Deep check for workshop membership - handles various DOM structures within contentEditable
+        const isInsideWorkshop = editorRef.current?.contains(sel.anchorNode) || editorRef.current?.contains(target) || false;
+        
         if (rect.width > 0 && rect.height > 0) {
-          setSelection({ text: sel.toString().trim(), x: rect.left + rect.width / 2, y: rect.top, isInsideWorkshop });
+          // Normalizing text is critical for complex scripts (e.g., handling composite Tibetan characters consistently)
+          const normalizedText = sel.toString().trim().normalize('NFKC');
+          
+          setSelection({ 
+            text: normalizedText, 
+            x: rect.left + rect.width / 2, 
+            y: rect.top, 
+            isInsideWorkshop 
+          });
         }
       } catch (err) {}
     } else {
+      // Small timeout allows interactions with selection menu buttons before clearing state
       setTimeout(() => {
         const currentSel = window.getSelection();
         if (!currentSel || currentSel.toString().trim().length === 0) setSelection(null);
-      }, 50);
+      }, 150);
     }
   }, []);
 
@@ -152,9 +170,11 @@ const App: React.FC = () => {
 
   const handleExplain = async (type: 'explain' | 'translate', textToExplain?: string) => {
     const targetText = textToExplain || selection?.text;
-    if (!targetText) return;
+    if (!targetText || targetText.length < 1) return;
+
     setExplanation({ text: "", loading: true });
     setApiError(null);
+    
     try {
       const result = await quickExplain(targetText, type);
       setExplanation({ text: result, loading: false });
@@ -168,9 +188,13 @@ const App: React.FC = () => {
     }
   };
 
+  /**
+   * Automated Research Trigger
+   * Automatically opens the research drawer when text is selected within the workshop.
+   */
   useEffect(() => {
-    if (selection?.isInsideWorkshop && selection.text.length >= 1) {
-      const timer = setTimeout(() => handleExplain('explain'), 200);
+    if (selection?.isInsideWorkshop && selection.text.length >= 1 && !explanation?.loading) {
+      const timer = setTimeout(() => handleExplain('explain'), 300);
       return () => clearTimeout(timer);
     }
   }, [selection?.text, selection?.isInsideWorkshop]);
@@ -223,33 +247,61 @@ const App: React.FC = () => {
     const eng = segments[3]?.trim();
 
     return (
-      <div className="space-y-16">
+      <div className="space-y-12 pb-20">
+        {/* Tibetan Commentary: Priority 1 */}
         {tib && (
           <div className="relative group animate-in fade-in slide-in-from-top-6 duration-700">
-            <div className="absolute -left-6 top-0 bottom-0 w-1 bg-himalaya-gold group-hover:w-2 transition-all" />
+            <div className="absolute -left-6 top-0 bottom-0 w-1.5 bg-himalaya-gold group-hover:w-2.5 transition-all rounded-full" />
             <div className="flex items-center gap-3 mb-8">
-               <span className="text-[10px] font-black text-himalaya-red uppercase tracking-[0.4em] bg-himalaya-gold/10 px-4 py-1.5 rounded-full border border-himalaya-gold/20">
-                 བོད་ཡིག་འགྲེལ་བཤད་ Scholarly Insight
+               <span className="text-[11px] font-black text-himalaya-red uppercase tracking-[0.4em] bg-himalaya-gold/15 px-5 py-2 rounded-full border border-himalaya-gold/30 shadow-sm">
+                 བོད་ཡིག་འགྲེལ་བཤད་ Scholarly Commentary
                </span>
-               <div className="h-px flex-1 bg-gradient-to-r from-himalaya-gold/30 to-transparent" />
+               <div className="h-px flex-1 bg-gradient-to-r from-himalaya-gold/40 to-transparent" />
             </div>
-            <div className="relative p-10 bg-himalaya-gold/5 rounded-[2rem] border border-himalaya-gold/10 shadow-inner">
-               <Quote className="absolute -top-4 -left-4 text-himalaya-gold opacity-20" size={64} />
-               <p className="text-[3.5rem] font-tibetan leading-[2.1] text-himalaya-dark text-justify selection:bg-himalaya-gold/30">
+            <div className="relative p-12 bg-white/40 backdrop-blur-sm rounded-[2.5rem] border border-himalaya-gold/10 shadow-xl overflow-hidden">
+               <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none rotate-12">
+                 <Pen size={120} className="text-himalaya-gold" />
+               </div>
+               <Quote className="absolute -top-4 -left-4 text-himalaya-gold opacity-15" size={80} />
+               <p className="text-[3.5rem] font-tibetan leading-[2.1] text-himalaya-dark text-justify selection:bg-himalaya-gold/30 relative z-10">
                  {tib}
                </p>
             </div>
           </div>
         )}
+
+        {/* Chinese Rendering: Priority 2 */}
         {chi && (
           <div className="animate-in fade-in slide-in-from-left-6 duration-1000 delay-200">
-            <div className="flex items-center gap-4 mb-4 opacity-40">
-               <div className="h-px flex-1 bg-gray-200" />
-               <span className="text-[9px] font-bold uppercase tracking-widest text-gray-500">汉语译文 Chinese rendering</span>
-               <div className="h-px flex-1 bg-gray-200" />
+            <div className="flex items-center gap-4 mb-6">
+               <div className="h-px w-12 bg-himalaya-red/20" />
+               <span className="text-[10px] font-black uppercase tracking-widest text-himalaya-red/60 flex items-center gap-2">
+                 <Globe size={14} /> 汉语译文 Chinese rendering
+               </span>
+               <div className="h-px flex-1 bg-himalaya-red/10" />
             </div>
-            <div className="px-10 py-8 bg-gray-50/50 rounded-3xl border border-gray-100 italic">
-               <p className="text-2xl font-serif text-gray-700 leading-relaxed text-justify">{chi}</p>
+            <div className="px-12 py-10 bg-white/60 rounded-[2rem] border border-gray-100 shadow-lg">
+               <p className="text-2xl font-serif text-gray-800 leading-relaxed text-justify italic border-l-4 border-himalaya-red/10 pl-8">
+                 {chi}
+               </p>
+            </div>
+          </div>
+        )}
+
+        {/* English Translation: Priority 3 */}
+        {eng && (
+          <div className="animate-in fade-in slide-in-from-right-6 duration-1000 delay-400">
+            <div className="flex items-center gap-4 mb-6">
+               <div className="h-px w-12 bg-blue-900/10" />
+               <span className="text-[10px] font-black uppercase tracking-widest text-blue-900/40 flex items-center gap-2">
+                 <Languages size={14} /> English Translation
+               </span>
+               <div className="h-px flex-1 bg-blue-900/5" />
+            </div>
+            <div className="px-12 py-8 bg-blue-50/20 rounded-[2rem] border border-blue-100/30">
+               <p className="text-xl font-sans text-gray-600 leading-relaxed text-justify tracking-tight">
+                 {eng}
+               </p>
             </div>
           </div>
         )}
@@ -310,7 +362,6 @@ const App: React.FC = () => {
     const text = overrideText || editorRef.current?.innerText.trim();
     if (!text || (isLoading && !overrideText)) return;
     
-    // Clear state before sending
     setApiError(null);
     if (!overrideText && editorRef.current) {
       editorRef.current.innerHTML = '';
@@ -432,16 +483,21 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Workshop Drawer Overlay */}
+      {/* Research Drawer Overlay */}
       {explanation && (
         <div className="fixed inset-0 z-[2500] flex justify-end">
            <div className="absolute inset-0 bg-black/20 backdrop-blur-[4px]" onClick={() => { setExplanation(null); setSelection(null); }} />
-           <div className="relative w-full max-w-[700px] h-full bg-white shadow-2xl border-l-[16px] border-himalaya-gold flex flex-col animate-in slide-in-from-right duration-500 research-drawer">
+           <div className="relative w-full max-w-[800px] h-full bg-white shadow-2xl border-l-[16px] border-himalaya-gold flex flex-col animate-in slide-in-from-right duration-500 research-drawer">
               <div className="h-32 bg-himalaya-red flex items-center justify-between px-12 text-himalaya-gold shrink-0 border-b-8 border-himalaya-gold/20 relative overflow-hidden">
                  <div className="absolute top-0 right-0 p-4 opacity-5"><BookOpen size={120} /></div>
                  <div className="flex items-center gap-8 relative z-10">
-                    <div className="w-20 h-20 rounded-3xl bg-himalaya-gold flex items-center justify-center shadow-2xl rotate-3"><Sparkles size={40} className="text-himalaya-red" /></div>
-                    <div><h3 className="text-4xl font-black font-tibetan leading-none mb-2">གཏེར་མཛོད་Archive</h3><p className="text-[12px] uppercase tracking-[0.5em] font-bold opacity-70">Imperial Retrieval Hub</p></div>
+                    <div className="w-20 h-20 rounded-3xl bg-himalaya-gold flex items-center justify-center shadow-2xl rotate-3">
+                      <Sparkles size={40} className="text-himalaya-red" />
+                    </div>
+                    <div>
+                      <h3 className="text-4xl font-black font-tibetan leading-none mb-2">གཏེར་མཛོད་Archive</h3>
+                      <p className="text-[12px] uppercase tracking-[0.5em] font-bold opacity-70">Scholarly Retrieval Hub</p>
+                    </div>
                  </div>
                  <button onClick={() => { setExplanation(null); setSelection(null); }} className="w-16 h-16 rounded-full hover:bg-white/10 flex items-center justify-center transition-all hover:scale-110 active:scale-90 relative z-10"><X size={32} /></button>
               </div>
@@ -451,7 +507,11 @@ const App: React.FC = () => {
                       <div className="relative"><div className="absolute inset-0 animate-ping rounded-full bg-himalaya-red/20" /><div className="relative w-32 h-32 rounded-full border-4 border-dashed border-himalaya-red flex items-center justify-center animate-spin-slow"><RefreshCw size={48} className="text-himalaya-red" /></div></div>
                       <div className="flex flex-col items-center gap-4"><span className="text-[14px] font-black uppercase tracking-[0.8em] text-himalaya-red">Deep Discovery</span><span className="text-[12px] font-bold text-gray-400 font-tibetan">གཏེར་མཛོད་ནས་འཚོལ་བཞིན་ཡོད།</span></div>
                    </div>
-                 ) : (<div className="prose prose-2xl max-w-none">{formatExplanationText(explanation.text)}</div>)}
+                 ) : (
+                   <div className="prose prose-2xl max-w-none">
+                     {formatExplanationText(explanation.text)}
+                   </div>
+                 )}
               </div>
            </div>
         </div>
@@ -459,11 +519,26 @@ const App: React.FC = () => {
 
       {/* Selection Menu */}
       {selection && !explanation && !apiError && (
-        <div className="selection-menu fixed z-[3000] -translate-x-1/2 -translate-y-[120%] animate-in fade-in zoom-in duration-200" style={{ left: selection.x, top: selection.y }}>
+        <div 
+          className="selection-menu fixed z-[3000] -translate-x-1/2 -translate-y-[120%] animate-in fade-in zoom-in duration-200" 
+          style={{ left: selection.x, top: selection.y }}
+        >
           <div className="bg-himalaya-red text-himalaya-gold rounded-full shadow-2xl p-1 flex items-center border border-himalaya-gold/30">
-            <button onClick={() => handleExplain('explain')} className="flex items-center gap-2 px-4 py-2 hover:bg-white/10 rounded-full transition-colors group"><Sparkles size={16} className="group-hover:animate-pulse" /><span className="text-[10px] font-black uppercase tracking-widest">研注 Analysis</span></button>
+            <button 
+              onClick={() => handleExplain('explain')} 
+              className="flex items-center gap-2 px-4 py-2 hover:bg-white/10 rounded-full transition-colors group"
+            >
+              <Sparkles size={16} className="group-hover:animate-pulse" />
+              <span className="text-[10px] font-black uppercase tracking-widest">研注 Analysis</span>
+            </button>
             <div className="w-px h-4 bg-himalaya-gold/30 mx-1" />
-            <button onClick={() => { navigator.clipboard.writeText(selection.text); setSelection(null); }} className="p-2 hover:bg-white/10 rounded-full transition-colors"><Copy size={16} /></button>
+            <button 
+              onClick={() => { navigator.clipboard.writeText(selection.text); setSelection(null); }} 
+              className="p-2 hover:bg-white/10 rounded-full transition-colors"
+              title="Copy selection"
+            >
+              <Copy size={16} />
+            </button>
           </div>
         </div>
       )}
@@ -550,10 +625,19 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex-1 overflow-hidden relative p-8 bg-white">
-              <div id="scribe-editor" ref={editorRef} contentEditable spellCheck="false" style={{ fontSize: `${fontSize}px` }} className="w-full h-full outline-none font-tibetan leading-[2.6] overflow-y-auto custom-scrollbar text-himalaya-dark px-10 pb-40 selection:bg-himalaya-gold/40 text-justify" onInput={() => setInputText(editorRef.current?.innerText || "")} />
+              <div 
+                id="scribe-editor" 
+                ref={editorRef} 
+                contentEditable 
+                spellCheck="false" 
+                style={{ fontSize: `${fontSize}px` }} 
+                className="w-full h-full outline-none font-tibetan leading-[2.6] overflow-y-auto custom-scrollbar text-himalaya-dark px-10 pb-40 selection:bg-himalaya-gold/40 text-justify" 
+                onInput={() => setInputText(editorRef.current?.innerText || "")} 
+              />
               {!inputText && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-5 gap-8">
-                  <Search size={160} /><div className="font-tibetan text-6xl text-center px-20">འབྲི་བཤེར་གནང་རོགས། 开启深度的知识检索...</div>
+                  <Search size={160} />
+                  <div className="font-tibetan text-6xl text-center px-20">འབྲི་བཤེར་གནང་རོགས། 开启深度的知识检索...</div>
                 </div>
               )}
           </div>
