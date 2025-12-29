@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
 
 const SYSTEM_INSTRUCTION = `
@@ -20,6 +21,13 @@ STRICT PROTOCOL:
 7. ABSOLUTE SILENCE: Only output the scholarly text. No meta-commentary.
 `;
 
+export class ApiError extends Error {
+  constructor(public message: string, public status?: number, public code?: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 async function withRetry<T>(
   fn: () => Promise<T>,
   retries = 3,
@@ -34,30 +42,25 @@ async function withRetry<T>(
       errorMsg.includes("RESOURCE_EXHAUSTED") || 
       error?.status === "RESOURCE_EXHAUSTED";
     
-    if (retries > 0 && isQuotaError) {
-      console.warn(`Quota exceeded. Retrying in ${delay}ms... (${retries} retries left)`);
+    const isNetworkError = errorMsg.includes("fetch") || errorMsg.includes("NetworkError");
+
+    if (retries > 0 && (isQuotaError || isNetworkError)) {
+      console.warn(`Retryable error encountered. Retrying in ${delay}ms... (${retries} retries left)`);
       await new Promise((resolve) => setTimeout(resolve, delay));
       return withRetry(fn, retries - 1, delay * 2);
     }
     
-    throw error;
+    // Categorize error for the UI
+    if (isQuotaError) {
+      throw new ApiError("བརྡ་འཕྲིན་ཚད་ལས་བརྒལ་བས་ཅུང་ཟད་སྒུག་རོགས། (API Quota Exceeded)", 429, 'QUOTA');
+    }
+    if (errorMsg.includes("API_KEY_INVALID") || errorMsg.includes("403")) {
+      throw new ApiError("གསང་རྟགས་ནོར་བའམ་ནུས་མེད་དུ་གྱུར་འདུག (Invalid API Key)", 403, 'AUTH');
+    }
+    
+    throw new ApiError(error?.message || "འཕྲུལ་ཆས་ལ་སྐྱོན་བྱུང་བས་བསྐྱར་དུ་གཏོགས་རོགས། (Unexpected API error)", error?.status);
   }
 }
-
-export const startNewChat = (history: any[]) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  return ai.chats.create({
-    model: 'gemini-3-pro-preview',
-    config: {
-      systemInstruction: SYSTEM_INSTRUCTION,
-      temperature: 0.9,
-      topP: 0.95,
-      maxOutputTokens: 8192,
-      thinkingConfig: { thinkingBudget: 4096 }
-    },
-    history: history,
-  });
-};
 
 export const sendMessageToSession = async (
   text: string,
@@ -114,17 +117,18 @@ Format exactly as:
 [Academic English]`;
 
   try {
-    const response = await ai.models.generateContent({
+    // Adding explicit type parameter GenerateContentResponse to fix 'unknown' type inference on response
+    const response = await withRetry<GenerateContentResponse>(() => ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
         systemInstruction: "You are a Tibetan scholar of the highest order. Your priority is to produce profound Tibetan commentary. The Chinese translation is secondary and should be concise but accurate.",
         maxOutputTokens: 2048,
-        temperature: 0.3 // More stable for philology
+        temperature: 0.3
       }
-    });
+    }));
     return response.text || "No explanation available.";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Quick Explain Error:", error);
     throw error;
   }

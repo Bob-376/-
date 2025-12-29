@@ -4,12 +4,12 @@ import {
   Loader2, Feather, RotateCcw, Plus, Minus, AlertCircle, PenTool, X, MoveRight, 
   Key, Flame, Minimize2, Stars, Maximize, Languages, Info, Search,
   Trophy, BarChart3, Milestone, BrainCircuit, Compass, Pen, Maximize2, RefreshCw, Sparkles,
-  BookOpen, Quote, Copy, Check, ChevronRight, Type, Wand2, Save, FolderOpen, Trash2, History
+  BookOpen, Quote, Copy, Check, ChevronRight, Type, Wand2, Save, FolderOpen, Trash2, History, AlertTriangle, Bug
 } from 'lucide-react';
 import Header from './components/Header';
 import ChatMessage from './components/ChatMessage';
 import { Message } from './types';
-import { sendMessageToSession, quickExplain } from './services/geminiService';
+import { sendMessageToSession, quickExplain, ApiError } from './services/geminiService';
 
 const STORAGE_KEY_MESSAGES = 'himalaya_v2_messages';
 const STORAGE_KEY_POS = 'himalaya_ws_pos';
@@ -37,6 +37,13 @@ interface DraftEntry {
   charCount: number;
 }
 
+interface AppError {
+  message: string;
+  originalError?: any;
+  action?: () => void;
+  type: 'chat' | 'explain';
+}
+
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_MESSAGES);
@@ -53,6 +60,7 @@ const App: React.FC = () => {
   const [isCopied, setIsCopied] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [apiError, setApiError] = useState<AppError | null>(null);
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY_AUTOSCROLL);
     return saved !== null ? JSON.parse(saved) : true;
@@ -90,6 +98,7 @@ const App: React.FC = () => {
         setSelection(null);
         setIsArchiveOpen(false);
         setIsMemoryOpen(false);
+        setApiError(null);
       }
     };
     window.addEventListener('keydown', handleEsc);
@@ -114,7 +123,7 @@ const App: React.FC = () => {
 
   const handleTextSelection = useCallback((e: MouseEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest('.selection-menu') || target.closest('.research-drawer') || target.closest('.archive-popover')) {
+    if (target.closest('.selection-menu') || target.closest('.research-drawer') || target.closest('.archive-popover') || target.closest('.error-overlay')) {
       return;
     }
 
@@ -145,11 +154,17 @@ const App: React.FC = () => {
     const targetText = textToExplain || selection?.text;
     if (!targetText) return;
     setExplanation({ text: "", loading: true });
+    setApiError(null);
     try {
       const result = await quickExplain(targetText, type);
       setExplanation({ text: result, loading: false });
     } catch (err: any) {
-      setExplanation({ text: "རེ་ཞིག་འགྲེལ་བཤད་གནང་མ་ཐུབ།", loading: false });
+      setExplanation(null);
+      setApiError({ 
+        message: err.message || "རེ་ཞིག་འགྲེལ་བཤད་གནང་མ་ཐུབ། (Explanation failed)", 
+        type: 'explain',
+        action: () => handleExplain(type, targetText)
+      });
     }
   };
 
@@ -178,7 +193,7 @@ const App: React.FC = () => {
         timestamp: Date.now(),
         charCount: editorRef.current.innerText.length
       };
-      setDraftHistory(prev => [newDraft, ...prev].slice(0, 20)); // Keep last 20 saves
+      setDraftHistory(prev => [newDraft, ...prev].slice(0, 20)); 
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2000);
     }
@@ -220,7 +235,6 @@ const App: React.FC = () => {
             </div>
             <div className="relative p-10 bg-himalaya-gold/5 rounded-[2rem] border border-himalaya-gold/10 shadow-inner">
                <Quote className="absolute -top-4 -left-4 text-himalaya-gold opacity-20" size={64} />
-               {/* Increased font size for Tibetan characters here */}
                <p className="text-[3.5rem] font-tibetan leading-[2.1] text-himalaya-dark text-justify selection:bg-himalaya-gold/30">
                  {tib}
                </p>
@@ -249,6 +263,7 @@ const App: React.FC = () => {
       localStorage.removeItem(STORAGE_KEY_MESSAGES);
       if (editorRef.current) editorRef.current.innerHTML = "";
       setInputText("");
+      setApiError(null);
     }
   };
 
@@ -294,13 +309,18 @@ const App: React.FC = () => {
   const handleSend = async (overrideText?: string, targetId?: string, accumulatedText = "") => {
     const text = overrideText || editorRef.current?.innerText.trim();
     if (!text || (isLoading && !overrideText)) return;
+    
+    // Clear state before sending
+    setApiError(null);
     if (!overrideText && editorRef.current) {
       editorRef.current.innerHTML = '';
       setInputText("");
     }
+    
     setIsLoading(true);
     let botMsgId = targetId || Date.now().toString();
     const history = messages.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
+    
     if (!targetId) {
       setMessages(prev => [
         ...prev,
@@ -310,6 +330,7 @@ const App: React.FC = () => {
     } else {
       setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, isStreaming: true } : m));
     }
+
     try {
       const resultText = await sendMessageToSession(text!, history, (chunkText) => {
         setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: accumulatedText + chunkText } : m));
@@ -326,8 +347,19 @@ const App: React.FC = () => {
       }
     } catch (e: any) {
       setIsLoading(false);
-      setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, isStreaming: false } : m));
+      setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, isStreaming: false, text: "འཕྲུལ་ཆས་ལ་སྐྱོན་བྱུང་བས་བསྐྱར་དུ་གཏོགས་རོགས། (Encountered an error while processing.)" } : m));
+      setApiError({ 
+        message: e.message || "Request failed unexpectedly.", 
+        type: 'chat',
+        action: () => handleSend(text, botMsgId, accumulatedText)
+      });
     }
+  };
+
+  const handleReportIssue = () => {
+    const errorDetails = JSON.stringify(apiError, null, 2);
+    navigator.clipboard.writeText(`System Error Report:\n${errorDetails}`);
+    alert("错误详情已复制到剪贴板，请将其发送至技术支持。 (Error report copied to clipboard)");
   };
 
   return (
@@ -353,6 +385,52 @@ const App: React.FC = () => {
           <div ref={messagesEndRef} />
         </div>
       </main>
+
+      {/* Error Overlay */}
+      {apiError && (
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-6 animate-in fade-in duration-300">
+           <div className="absolute inset-0 bg-himalaya-dark/60 backdrop-blur-md" onClick={() => setApiError(null)} />
+           <div className="relative w-full max-w-lg bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border-4 border-himalaya-red error-overlay">
+              <div className="bg-himalaya-red p-8 flex items-center gap-6">
+                 <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                    <AlertTriangle size={36} className="text-white" />
+                 </div>
+                 <div>
+                    <h3 className="text-2xl font-black text-white font-tibetan">འཕྲུལ་ཆས་ལ་སྐྱོན་བྱུང་། System Alert</h3>
+                    <p className="text-[10px] text-white/70 uppercase tracking-widest font-bold">Processing Interrupted</p>
+                 </div>
+              </div>
+              <div className="p-10">
+                 <div className="bg-himalaya-red/5 p-6 rounded-2xl border border-himalaya-red/10 mb-8">
+                    <p className="text-xl font-tibetan leading-relaxed text-himalaya-red font-bold">
+                       {apiError.message}
+                    </p>
+                 </div>
+                 <div className="flex flex-col gap-3">
+                    {apiError.action && (
+                      <button 
+                        onClick={() => { setApiError(null); apiError.action?.(); }}
+                        className="w-full py-4 bg-himalaya-red text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-800 transition-all active:scale-[0.98]"
+                      >
+                         <RefreshCw size={18} />
+                         <span>བསྐྱར་དུ་གཏོགས་རོགས། (Retry)</span>
+                      </button>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                       <button onClick={handleReportIssue} className="py-4 bg-gray-100 text-gray-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-gray-200 transition-all">
+                          <Bug size={18} />
+                          <span>སྙན་ཞུ། (Report)</span>
+                       </button>
+                       <button onClick={() => setApiError(null)} className="py-4 border-2 border-gray-200 text-gray-400 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-gray-50 transition-all">
+                          <X size={18} />
+                          <span>ཡོལ་བ། (Dismiss)</span>
+                       </button>
+                    </div>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
 
       {/* Workshop Drawer Overlay */}
       {explanation && (
@@ -380,7 +458,7 @@ const App: React.FC = () => {
       )}
 
       {/* Selection Menu */}
-      {selection && !explanation && (
+      {selection && !explanation && !apiError && (
         <div className="selection-menu fixed z-[3000] -translate-x-1/2 -translate-y-[120%] animate-in fade-in zoom-in duration-200" style={{ left: selection.x, top: selection.y }}>
           <div className="bg-himalaya-red text-himalaya-gold rounded-full shadow-2xl p-1 flex items-center border border-himalaya-gold/30">
             <button onClick={() => handleExplain('explain')} className="flex items-center gap-2 px-4 py-2 hover:bg-white/10 rounded-full transition-colors group"><Sparkles size={16} className="group-hover:animate-pulse" /><span className="text-[10px] font-black uppercase tracking-widest">研注 Analysis</span></button>
