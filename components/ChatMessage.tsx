@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { Message } from '../types';
 import { Bot, User, Copy, Trash2, Clock, ShieldCheck, Check } from 'lucide-react';
@@ -51,7 +52,7 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete 
           className={`
             leading-[2.2] transition-all duration-200
             ${isTibetan 
-              ? 'font-tibetan text-[1.45em]' 
+              ? 'font-tibetan text-[1.7em]' 
               : 'font-sans text-[1em] opacity-80'}
             ${highlightType ? highlightClasses[highlightType] : ''}
           `}

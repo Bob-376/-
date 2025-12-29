@@ -220,7 +220,8 @@ const App: React.FC = () => {
             </div>
             <div className="relative p-10 bg-himalaya-gold/5 rounded-[2rem] border border-himalaya-gold/10 shadow-inner">
                <Quote className="absolute -top-4 -left-4 text-himalaya-gold opacity-20" size={64} />
-               <p className="text-[2.8rem] font-tibetan leading-[2.2] text-himalaya-dark text-justify selection:bg-himalaya-gold/30">
+               {/* Increased font size for Tibetan characters here */}
+               <p className="text-[3.5rem] font-tibetan leading-[2.1] text-himalaya-dark text-justify selection:bg-himalaya-gold/30">
                  {tib}
                </p>
             </div>
@@ -234,7 +235,7 @@ const App: React.FC = () => {
                <div className="h-px flex-1 bg-gray-200" />
             </div>
             <div className="px-10 py-8 bg-gray-50/50 rounded-3xl border border-gray-100 italic">
-               <p className="text-xl font-serif text-gray-700 leading-relaxed text-justify">{chi}</p>
+               <p className="text-2xl font-serif text-gray-700 leading-relaxed text-justify">{chi}</p>
             </div>
           </div>
         )}
