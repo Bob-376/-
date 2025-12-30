@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { 
   Loader2, Plus, Minus, X, Search, Compass, Maximize2, Minimize2, Edit3, 
   Sparkles, Info, Languages, History, BrainCircuit, Trash2, Check, Copy,
-  Mic, Video, Upload, FileVideo, Radio, Globe
+  Mic, Video, Upload, FileVideo, Radio, Globe, Type
 } from 'lucide-react';
 import Header from './components/Header';
 import ChatMessage from './components/ChatMessage';
@@ -180,6 +180,15 @@ const App: React.FC = () => {
     }
   };
 
+  const inputStats = useMemo(() => {
+    if (!inputText) return { tshegs: 0, hanzi: 0, words: 0 };
+    return {
+      tshegs: (inputText.match(/་/g) || []).length,
+      hanzi: (inputText.match(/[\u4e00-\u9fa5]/g) || []).length,
+      words: (inputText.match(/[a-zA-Z0-9'-]+/g) || []).length,
+    };
+  }, [inputText]);
+
   const totalWords = useMemo(() => messages.reduce((sum, m) => sum + countHumanWords(m.text), 0), [messages]);
   const progressPercentage = Math.min(100, (totalWords / EPIC_GOAL_WORDS) * 100);
 
@@ -229,7 +238,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-4">
               <div className="p-2 bg-himalaya-red rounded-xl text-himalaya-gold"><Edit3 size={20} /></div>
               <span className="text-[12px] font-bold text-himalaya-red">བརྡ་འཕྲིན་འཇུག་སྣོད།</span>
-              {isLoading && <span className="text-[10px] animate-pulse text-himalaya-gold font-black uppercase tracking-widest">Marathon Active...</span>}
+              {isLoading && <span className="text-[10px] animate-pulse text-himalaya-gold font-black uppercase tracking-widest ml-2">Marathon Active...</span>}
             </div>
             
             <div className="flex items-center gap-3">
@@ -268,23 +277,39 @@ const App: React.FC = () => {
 
             {/* Action Bar */}
             <div className="h-20 border-t border-gray-100 px-10 flex items-center justify-between bg-gray-50/50 shrink-0">
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-6 overflow-hidden">
+                <div className="flex items-center gap-2 shrink-0">
                   <button onClick={isRecording ? stopRecording : startRecording} 
-                          className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white border-2 border-gray-200 text-gray-400 hover:border-himalaya-red hover:text-himalaya-red'}`}>
-                    {isRecording ? <Radio size={20} /> : <Mic size={20} />}
+                          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white border border-gray-200 text-gray-400 hover:border-himalaya-red hover:text-himalaya-red'}`}>
+                    {isRecording ? <Radio size={18} /> : <Mic size={18} />}
                   </button>
-                  <label className="w-12 h-12 rounded-full flex items-center justify-center bg-white border-2 border-gray-200 text-gray-400 hover:border-himalaya-red hover:text-himalaya-red cursor-pointer">
-                    <Video size={20} />
+                  <label className="w-10 h-10 rounded-full flex items-center justify-center bg-white border border-gray-200 text-gray-400 hover:border-himalaya-red hover:text-himalaya-red cursor-pointer">
+                    <Video size={18} />
                     <input type="file" accept="video/*" className="hidden" onChange={handleVideoUpload} />
                   </label>
-                  {mediaLoading && <Loader2 className="animate-spin text-himalaya-gold" size={24} />}
+                  {mediaLoading && <Loader2 className="animate-spin text-himalaya-gold" size={20} />}
                 </div>
 
-                <div className="flex flex-col">
+                {/* Detailed Character Counter */}
+                <div className="flex items-center gap-4 border-l border-gray-200 pl-6 ml-2 shrink-0">
+                   <div className="flex flex-col">
+                      <span className="text-[7px] font-black text-gray-400 uppercase tracking-tighter">Tshegs (ཚེག)</span>
+                      <span className="text-[12px] font-bold tabular-nums text-himalaya-red">{inputStats.tshegs.toLocaleString()}</span>
+                   </div>
+                   <div className="flex flex-col">
+                      <span className="text-[7px] font-black text-gray-400 uppercase tracking-tighter">Hanzi (汉字)</span>
+                      <span className="text-[12px] font-bold tabular-nums text-himalaya-red">{inputStats.hanzi.toLocaleString()}</span>
+                   </div>
+                   <div className="flex flex-col">
+                      <span className="text-[7px] font-black text-gray-400 uppercase tracking-tighter">Words (EN)</span>
+                      <span className="text-[12px] font-bold tabular-nums text-himalaya-red">{inputStats.words.toLocaleString()}</span>
+                   </div>
+                </div>
+
+                <div className="flex flex-col ml-4 shrink-0">
                    <span className="text-[8px] font-black text-himalaya-gold uppercase tracking-widest">Goal Progress</span>
                    <div className="flex items-center gap-2">
-                      <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                         <div className="h-full bg-himalaya-gold transition-all duration-700" style={{ width: `${progressPercentage}%` }} />
                       </div>
                       <span className="text-[10px] font-bold tabular-nums text-himalaya-gold">{Math.round(progressPercentage)}%</span>
@@ -293,7 +318,7 @@ const App: React.FC = () => {
               </div>
 
               <button onClick={() => handleSend()} disabled={!inputText.trim() || isLoading} 
-                      className={`flex items-center gap-3 px-10 py-3.5 rounded-2xl font-black shadow-xl border-b-4 transition-all active:scale-95 ${isLoading ? 'bg-gray-200 text-gray-400 border-gray-300' : 'bg-himalaya-red text-himalaya-gold border-red-950 hover:bg-red-800'}`}>
+                      className={`flex items-center gap-3 px-8 py-3 rounded-2xl font-black shadow-xl border-b-4 transition-all active:scale-95 shrink-0 ${isLoading ? 'bg-gray-200 text-gray-400 border-gray-300' : 'bg-himalaya-red text-himalaya-gold border-red-950 hover:bg-red-800'}`}>
                 {isLoading ? <Loader2 className="animate-spin" size={20} /> : <Compass size={20} />}
                 <span className="text-[11px] uppercase tracking-widest">Retreive བརྡ་འཕྲིན་གཏོང་།</span>
               </button>
