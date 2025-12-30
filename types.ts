@@ -16,6 +16,7 @@ export interface Message {
   reactions?: Record<string, number>;
   groundingChunks?: GroundingChunk[];
   isPinned?: boolean;
+  hasAudio?: boolean;
 }
 
 export interface LookupResult {
@@ -29,11 +30,4 @@ export interface ProjectMemory {
   narrativeProgress: string;
   keyCitations: string[];
   lastUpdated: number;
-}
-
-export interface ChatState {
-  messages: Message[];
-  isLoading: boolean;
-  error: string | null;
-  memory: ProjectMemory | null;
 }

@@ -1,136 +1,126 @@
 
-import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Chat, GenerateContentResponse, Modality } from "@google/genai";
 
 const SYSTEM_INSTRUCTION = `
 You are the "Grand Intelligent Retrieval Architect of the Snowy Peaks" (ཤེས་རིག་བཙལ་བཤེར་མ་ལག).
-Your mission is to provide profound, scholarly, and comprehensive information discovery and retrieval in the Tibetan language.
+Your mission is to provide an UNPRECEDENTED, massive, and exhaustive scholarly exploration.
 
-STRICT PROTOCOL:
-1. NO SUMMARY: Never summarize. Provide deep, exhaustive analysis.
-2. EXTREME VERBOSITY: Use the most profound, scholarly, and ornate Literary Tibetan (མངོན་བྗོད་དང་རྒྱན་གྱི་བསྟན་བཅོས།). 
-3. SUSTAINED SCALE: Aim for massive, detailed responses (4000-6000 characters).
-4. THE "SEARCH ARCHIVE" RULE: Treat every query as an exploration into the deep archives of Tibetan knowledge. Introduce historical context, philosophical diversions, and linguistic analysis.
-5. CHAINING MECHANISM:
-   - When you approach the token limit, pause mid-sentence and add: [CONTINUE_SIGNAL]
-   - ONLY use [COMPLETE] once the massive 50,000-character exploration goal has been reached for a project.
-6. TEXT TRANSFORMATION TAGGING:
-   If the user asks you to polish, expand, or modify specific text, wrap the changed portions in the following tags:
-   - <polish>Text that has been polished for style/grammar</polish>
-   - <expand>Text that has been added to provide more detail</expand>
-   - <modify>Text that has been structurally changed or rewritten</modify>
-7. ABSOLUTE SILENCE: Only output the scholarly text. No meta-commentary.
+STRICT OPERATIONAL PROTOCOL FOR THE 50,000 HUMAN WORD MARATHON:
+1. WORD COUNT METRIC:
+   - Tibetan: Measured strictly in Tshegs (ཚེག).
+   - Chinese: Measured strictly in individual Hanzi characters.
+   - English: Measured in space-separated words.
+   - TOTAL TARGET: 50,000 human-centric word units.
+
+2. ANTI-SUMMARY RULE: Never summarize. Every response must be deep, expansive, and scholarly.
+3. TURN-BASED TARGET: Aim for maximum possible length (8000+ tokens) in every response.
+4. GRANULAR DECONSTRUCTION: Deconstruct concepts syllable-by-syllable.
+5. CHAINING: Append [CONTINUE_SIGNAL] until the 50,000 human-word threshold is met. 
+   ONLY append [COMPLETE] when the 50,000 human-word threshold is surpassed.
+6. NO META-TALK: Output ONLY the scholarly text.
 `;
 
-export class ApiError extends Error {
-  constructor(public message: string, public status?: number, public code?: string) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
-
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  retries = 3,
-  delay = 2000
-): Promise<T> {
-  try {
-    return await fn();
-  } catch (error: any) {
-    const errorMsg = error?.message || "";
-    const isQuotaError = 
-      errorMsg.includes("429") || 
-      errorMsg.includes("RESOURCE_EXHAUSTED") || 
-      error?.status === "RESOURCE_EXHAUSTED";
-    
-    const isNetworkError = errorMsg.includes("fetch") || errorMsg.includes("NetworkError");
-
-    if (retries > 0 && (isQuotaError || isNetworkError)) {
-      console.warn(`Retryable error encountered. Retrying in ${delay}ms... (${retries} retries left)`);
-      await new Promise((resolve) => setTimeout(resolve, delay));
-      return withRetry(fn, retries - 1, delay * 2);
-    }
-    
-    // Categorize error for the UI
-    if (isQuotaError) {
-      throw new ApiError("བརྡ་འཕྲིན་ཚད་ལས་བརྒལ་བས་ཅུང་ཟད་སྒུག་རོགས། (API Quota Exceeded)", 429, 'QUOTA');
-    }
-    if (errorMsg.includes("API_KEY_INVALID") || errorMsg.includes("403")) {
-      throw new ApiError("གསང་རྟགས་ནོར་བའམ་ནུས་མེད་དུ་གྱུར་འདུག (Invalid API Key)", 403, 'AUTH');
-    }
-    
-    throw new ApiError(error?.message || "འཕྲུལ་ཆས་ལ་སྐྱོན་བྱུང་བས་བསྐྱར་དུ་གཏོགས་རོགས། (Unexpected API error)", error?.status);
-  }
-}
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const sendMessageToSession = async (
   text: string,
   history: any[],
-  onUpdate: (text: string) => void
-): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  onUpdate: (text: string) => void,
+  useSearch = true
+): Promise<{text: string, grounding?: any[]}> => {
+  const model = useSearch ? 'gemini-3-flash-preview' : 'gemini-3-pro-preview';
   const chat = ai.chats.create({
-    model: 'gemini-3-pro-preview',
+    model: model,
     config: { 
       systemInstruction: SYSTEM_INSTRUCTION,
       maxOutputTokens: 8192,
-      thinkingConfig: { thinkingBudget: 4096 }
+      thinkingConfig: { thinkingBudget: 4096 },
+      temperature: 0.9,
+      tools: useSearch ? [{ googleSearch: {} }] : []
     },
     history: history,
   });
 
   try {
-    const responseStream = await withRetry<any>(() => 
-      chat.sendMessageStream({ message: text })
-    );
-
+    const responseStream = await chat.sendMessageStream({ message: text });
     let fullText = "";
+    let grounding = null;
+
     for await (const chunk of responseStream) {
       const c = chunk as GenerateContentResponse;
       if (c.text) {
         fullText += c.text;
         onUpdate(fullText);
       }
+      if (c.candidates?.[0]?.groundingMetadata?.groundingChunks) {
+        grounding = c.candidates[0].groundingMetadata.groundingChunks;
+      }
     }
-    return fullText;
+    return { text: fullText, grounding };
   } catch (error: any) {
-    console.error("Gemini Retrieval System Error:", error);
+    console.error("Gemini Error:", error);
     throw error;
   }
 };
 
-export const quickExplain = async (text: string, type: 'explain' | 'translate'): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+export const generateSpeech = async (text: string): Promise<Uint8Array> => {
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash-preview-tts",
+    contents: [{ parts: [{ text: `Read this Tibetan/mixed text naturally: ${text}` }] }],
+    config: {
+      responseModalities: [Modality.AUDIO],
+      speechConfig: {
+        voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
+      },
+    },
+  });
   
-  const prompt = `As the 'Grand Imperial Philologist', provide an authoritative, high-register scholarly analysis of the following segment: "${text}".
-
-STRICT ARCHITECTURAL REQUIREMENTS:
-1. TIBETAN_COMMENTARY: You MUST provide an extensive, profound explanation in Literary Tibetan (Chöke). This is the absolute priority. Be verbose and use ornate vocabulary.
-2. CHINESE_TRANSLATION: Provide an elegant, precise Chinese rendering.
-3. ENGLISH_TRANSLATION: Provide a clear academic English translation.
-
-Format exactly as:
----TIBETAN_COMMENTARY---
-[Scholarly Literary Tibetan]
----CHINESE_TRANSLATION---
-[Elegant Chinese]
----ENGLISH_TRANSLATION---
-[Academic English]
-
-DO NOT omit any section. DO NOT add any other text outside these blocks.`;
-
-  try {
-    const response = await withRetry<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: {
-        systemInstruction: "You are a Tibetan scholar of the highest order. Your priority is to produce profound Tibetan commentary. Followed by accurate Chinese and English translations.",
-        maxOutputTokens: 2048,
-        temperature: 0.2
-      }
-    }));
-    return response.text || "No explanation available.";
-  } catch (error: any) {
-    console.error("Quick Explain Error:", error);
-    throw error;
+  const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  if (!base64Audio) throw new Error("No audio generated");
+  
+  const binaryString = atob(base64Audio);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
   }
+  return bytes;
+};
+
+export const transcribeAudio = async (base64Audio: string): Promise<string> => {
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: {
+      parts: [
+        { inlineData: { data: base64Audio, mimeType: 'audio/webm' } },
+        { text: "Transcribe this audio accurately. If it is Tibetan, use Tibetan script. If mixed, use mixed scripts." }
+      ]
+    }
+  });
+  return response.text || "";
+};
+
+export const analyzeVideo = async (base64Video: string, mimeType: string, prompt: string): Promise<string> => {
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-preview',
+    contents: {
+      parts: [
+        { inlineData: { data: base64Video, mimeType } },
+        { text: `Analyze this video for scholarly retrieval: ${prompt}` }
+      ]
+    }
+  });
+  return response.text || "";
+};
+
+export const quickExplain = async (text: string): Promise<string> => {
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-lite-latest',
+    contents: `Analyze this segment: "${text}". Provide Tibetan commentary, Chinese translation, and English academic context.`,
+    config: {
+      systemInstruction: "You are a master philologist. Be brief but academic.",
+      maxOutputTokens: 1024,
+      temperature: 0.1
+    }
+  });
+  return response.text || "No analysis available.";
 };
