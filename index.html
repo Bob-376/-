@@ -80,6 +80,14 @@
         background: rgba(212, 175, 55, 0.3);
         color: #1A1A1A;
       }
+
+      /* contentEditable Placeholder Simulation */
+      .workshop-editor:empty:before {
+        content: attr(data-placeholder);
+        color: #9ca3af;
+        pointer-events: none;
+        display: block;
+      }
     </style>
   <script type="importmap">
 {

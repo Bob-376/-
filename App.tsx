@@ -6,7 +6,7 @@ import {
   Mic, Video, Upload, FileVideo, Radio, Globe, Type, Filter, Image as ImageIcon,
   Camera, Zap, AlertCircle, RefreshCw, FileText, BookOpen, Quote, ZoomIn, ZoomOut, Layers,
   Type as TypeIcon, Palette, Move, Save, ChevronRight, LayoutPanelTop, SendHorizonal, ArrowUpRight,
-  FileSearch, SearchCode
+  FileSearch, SearchCode, Type as FontSizeIcon
 } from 'lucide-react';
 import Header from './components/Header';
 import ChatMessage from './components/ChatMessage';
@@ -202,7 +202,6 @@ const App: React.FC = () => {
     handleSend(actionText);
   };
 
-  // OCR Logic for a single image item from chat
   const handleImageOCR = async (mediaItem: MediaItem) => {
     if (isLoading) return;
     
@@ -349,6 +348,10 @@ const App: React.FC = () => {
 
   const totalWordsCountSum = useMemo(() => messages.reduce((sum, m) => sum + countHumanWords(m.text), 0), [messages]);
 
+  const changeFontSize = (delta: number) => {
+    setFontSize(prev => Math.min(72, Math.max(12, prev + delta)));
+  };
+
   return (
     <div className="flex flex-col h-screen bg-himalaya-cream font-tibetan overflow-hidden relative">
       <Header 
@@ -398,7 +401,6 @@ const App: React.FC = () => {
                 </label>
              </div>
              
-             {/* Pending Image Info in Quick Bar */}
              {imageFiles.length > 0 && (
                <div className="flex items-center gap-2 bg-himalaya-gold/10 px-3 py-1.5 rounded-2xl border border-himalaya-gold/20 shrink-0">
                   <div className="w-8 h-8 rounded-lg overflow-hidden border border-himalaya-gold">
@@ -420,7 +422,7 @@ const App: React.FC = () => {
                ref={quickInputRef}
                value={inputText}
                onChange={(e) => setInputText(e.target.value)}
-               placeholder="བརྡ་འཕྲིན་འདིར་འཇུག་རོགས། (Enter your query...)"
+               placeholder="Enter Tibetan text or query..."
                className="flex-1 bg-transparent border-none outline-none font-tibetan py-2.5 px-3 resize-none max-h-32 text-lg custom-scrollbar"
                rows={1}
                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
@@ -468,50 +470,66 @@ const App: React.FC = () => {
 
       {isInputVisible && (
         <div 
-          className={`fixed flex flex-col bg-white overflow-hidden transition-all duration-500 ease-in-out ${isMaximized ? 'inset-0 !w-full !h-full border-0 rounded-0 z-[200]' : isDocked ? 'bottom-0 left-0 right-0 h-[550px] !w-full border-t-4 border-himalaya-gold rounded-t-[3rem] z-[200]' : 'border-4 border-himalaya-gold shadow-2xl rounded-[2.5rem] z-[200]'}`} 
+          className={`fixed flex flex-col bg-white overflow-hidden transition-all duration-500 ease-in-out ${isMaximized ? 'inset-0 !w-full !h-full border-0 rounded-0 z-[200]' : isDocked ? 'bottom-0 left-0 right-0 h-[65vh] !w-full border-t-4 border-himalaya-gold rounded-t-[3rem] z-[200]' : 'border-4 border-himalaya-gold shadow-2xl rounded-[2.5rem] z-[200]'}`} 
           style={(!isMaximized && !isDocked) ? { width: `${wsSize.width}px`, height: `${wsSize.height}px`, left: `${wsPos.x}px`, top: `${wsPos.y}px` } : {}}
         >
           <div onMouseDown={(e) => { if (isMaximized || isDocked || (e.target as HTMLElement).closest('button')) return; setDragging({ startX: e.clientX, startY: e.clientY, initialX: wsPos.x, initialY: wsPos.y }); }}
-            className="h-16 bg-gray-50 flex items-center justify-between px-8 border-b cursor-grab active:cursor-grabbing shrink-0"
+            className="h-14 bg-gray-50 flex items-center justify-between px-8 border-b cursor-grab active:cursor-grabbing shrink-0"
           >
             <div className="flex items-center gap-4">
-              <div className="p-2 bg-himalaya-red rounded-xl text-himalaya-gold"><Edit3 size={20} /></div>
-              <span className="text-[12px] font-bold text-himalaya-red uppercase tracking-widest">Master Scribe Workshop</span>
+              <div className="p-1.5 bg-himalaya-red rounded-lg text-himalaya-gold"><Edit3 size={18} /></div>
+              <span className="text-[11px] font-bold text-himalaya-red uppercase tracking-widest hidden sm:inline">Master Scribe Workshop</span>
             </div>
-            <div className="flex items-center gap-3">
-              <button onClick={() => setIsDocked(!isDocked)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-black uppercase transition-all ${isDocked ? 'bg-himalaya-red text-white' : 'bg-gray-200 text-gray-500'}`}>
-                {isDocked ? 'Floating Mode' : 'Docked Mode'}
+            <div className="flex items-center gap-2">
+              {/* Font Size Controls */}
+              <div className="flex items-center bg-white border border-gray-200 rounded-full p-0.5 shadow-sm mr-2">
+                <button onClick={() => changeFontSize(-2)} className="p-1 text-gray-400 hover:text-himalaya-red transition-colors"><Minus size={14} /></button>
+                <div className="px-2 flex items-center gap-1 border-x border-gray-100 min-w-[48px] justify-center">
+                  <span className="text-[10px] font-black tabular-nums">{fontSize}</span>
+                  <span className="text-[7px] font-bold text-gray-300 uppercase">px</span>
+                </div>
+                <button onClick={() => changeFontSize(2)} className="p-1 text-gray-400 hover:text-himalaya-red transition-colors"><Plus size={14} /></button>
+              </div>
+
+              <button onClick={() => setIsDocked(!isDocked)} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[8px] font-black uppercase transition-all ${isDocked ? 'bg-himalaya-red text-white' : 'bg-gray-200 text-gray-500'}`}>
+                {isDocked ? 'Docked' : 'Float'}
               </button>
-              <button onClick={() => setUseSearch(!useSearch)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-black uppercase transition-all ${useSearch ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-200 text-gray-500'}`}>
-                <Globe size={12} /> Search {useSearch ? 'ON' : 'OFF'}
+              <button onClick={() => setUseSearch(!useSearch)} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[8px] font-black uppercase transition-all ${useSearch ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-200 text-gray-500'}`}>
+                <Globe size={10} /> Search {useSearch ? 'ON' : 'OFF'}
               </button>
-              <button onClick={() => setIsMaximized(!isMaximized)} className="text-gray-400 hover:text-himalaya-red ml-4">{isMaximized ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button>
-              <button onClick={toggleWorkshop} className="p-2 text-gray-400 hover:text-red-600"><X size={18} /></button>
+              <button onClick={() => setIsMaximized(!isMaximized)} className="text-gray-400 hover:text-himalaya-red ml-1">{isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
+              <button onClick={toggleWorkshop} className="p-1 text-gray-400 hover:text-red-600"><X size={16} /></button>
             </div>
           </div>
 
-          <div className="flex-1 flex flex-col overflow-hidden bg-white">
-            <div ref={editorRef} contentEditable spellCheck="false" style={{ fontSize: `${fontSize}px` }} 
-                 className="flex-1 outline-none font-tibetan leading-[1.8] overflow-y-auto p-10 pb-20 text-justify custom-scrollbar" />
+          <div className="flex-1 flex flex-col min-h-0 bg-white">
+            <div 
+              ref={editorRef} 
+              contentEditable 
+              spellCheck="false" 
+              style={{ fontSize: `${fontSize}px` }} 
+              data-placeholder="Enter Tibetan text or query..."
+              className="workshop-editor flex-1 min-h-0 outline-none font-tibetan leading-[1.8] overflow-y-auto p-10 text-justify custom-scrollbar transition-all duration-200" 
+            />
             
             {imageFiles.length > 0 && (
-              <div className="shrink-0 bg-gray-50 border-t border-gray-100 p-4 animate-in slide-in-from-bottom-2 duration-300">
-                <div className="flex items-center justify-between mb-3 px-2">
+              <div className="shrink-0 bg-gray-50 border-t border-gray-100 p-3 animate-in slide-in-from-bottom-2 duration-300">
+                <div className="flex items-center justify-between mb-2 px-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-black text-himalaya-gold uppercase bg-himalaya-red px-2 py-1 rounded">Batch Queue</span>
-                    <button onClick={() => handleActionClick("Identify and extract all TIBETAN (བོད་ཡིག) text from these images as ORIGINAL SCRIPT. NO translation.")} className="flex items-center gap-1.5 px-3 py-1 bg-white border border-himalaya-gold/30 rounded-full text-[10px] font-bold text-himalaya-red hover:bg-himalaya-gold/10 transition-colors shadow-sm">
-                      <FileSearch size={12} /> བོད་ཡིག་原文提取
+                    <span className="text-[8px] font-black text-himalaya-gold uppercase bg-himalaya-red px-1.5 py-0.5 rounded">Artifacts</span>
+                    <button onClick={() => handleActionClick("Extract all Tibetan text from these images accurately.")} className="flex items-center gap-1 px-2 py-0.5 bg-white border border-himalaya-gold/30 rounded-full text-[9px] font-bold text-himalaya-red hover:bg-himalaya-gold/10">
+                      <SearchCode size={10} /> བོད་ཡིག་原文
                     </button>
                   </div>
-                  <button onClick={() => setImageFiles([])} className="text-[9px] font-black uppercase text-red-600 hover:text-red-800 transition-colors">Clear All</button>
+                  <button onClick={() => setImageFiles([])} className="text-[8px] font-black uppercase text-red-600">Clear</button>
                 </div>
-                <div className="flex gap-3 overflow-x-auto no-scrollbar py-1">
+                <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
                   {imageFiles.map((file) => (
-                    <div key={file.id} className="w-16 h-16 bg-himalaya-gold/10 border-2 border-himalaya-gold rounded-xl overflow-hidden shadow-md group relative shrink-0 transition-transform hover:scale-105">
+                    <div key={file.id} className="w-14 h-14 bg-himalaya-gold/10 border border-himalaya-gold/30 rounded-lg overflow-hidden group relative shrink-0">
                       <img src={`data:image/jpeg;base64,${file.data}`} className="w-full h-full object-cover" alt="Thumb" />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity">
-                        <button onClick={() => setEditingImageId(file.id)} className="text-himalaya-gold hover:scale-110 transition-transform"><TypeIcon size={14} /></button>
-                        <button onClick={() => setImageFiles(p => p.filter(i => i.id !== file.id))} className="text-white hover:scale-110 transition-transform"><X size={14} /></button>
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1.5">
+                        <button onClick={() => setEditingImageId(file.id)} className="text-himalaya-gold hover:scale-110"><TypeIcon size={12} /></button>
+                        <button onClick={() => setImageFiles(p => p.filter(i => i.id !== file.id))} className="text-white hover:scale-110"><X size={12} /></button>
                       </div>
                     </div>
                   ))}
@@ -519,19 +537,19 @@ const App: React.FC = () => {
               </div>
             )}
 
-            <div className="h-24 shrink-0 border-t border-gray-100 px-10 flex items-center justify-between bg-gray-50">
-              <div className="flex items-center gap-4">
-                <button onClick={isRecording ? () => mediaRecorderRef.current?.stop() : startRecording} className={`w-12 h-12 rounded-full flex items-center justify-center shadow-md transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse scale-110' : 'bg-white text-gray-400 hover:text-himalaya-red'}`}><Mic size={22} /></button>
-                <div className="flex items-center bg-white border border-gray-200 rounded-full p-1 shadow-sm">
-                  <label className="w-11 h-11 flex items-center justify-center text-gray-400 hover:text-himalaya-gold cursor-pointer transition-colors"><ImageIcon size={22} /><input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} /></label>
-                  <div className="w-px h-6 bg-gray-100 mx-1" />
-                  <button onClick={startCamera} className="w-11 h-11 flex items-center justify-center text-gray-400 hover:text-himalaya-red transition-colors"><Camera size={22} /></button>
+            <div className="h-20 shrink-0 border-t border-gray-200 px-8 flex items-center justify-between bg-white shadow-[0_-4px_12px_rgba(0,0,0,0.03)]">
+              <div className="flex items-center gap-3">
+                <button onClick={isRecording ? () => mediaRecorderRef.current?.stop() : startRecording} className={`w-11 h-11 rounded-full flex items-center justify-center shadow-md transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-gray-400'}`}><Mic size={20} /></button>
+                <div className="flex items-center bg-gray-50 border border-gray-100 rounded-full p-1">
+                  <label className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-himalaya-gold cursor-pointer"><ImageIcon size={20} /><input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} /></label>
+                  <div className="w-px h-5 bg-gray-200 mx-0.5" />
+                  <button onClick={startCamera} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-himalaya-red"><Camera size={20} /></button>
                 </div>
-                {mediaLoading && <Loader2 className="animate-spin text-himalaya-gold" size={24} />}
+                {mediaLoading && <Loader2 className="animate-spin text-himalaya-gold" size={20} />}
               </div>
-              <button onClick={() => handleSend()} disabled={isLoading} className="flex items-center gap-3 px-10 py-3 rounded-2xl font-black bg-himalaya-red text-himalaya-gold shadow-xl border-b-4 border-red-950 active:scale-95 transition-all disabled:opacity-50">
-                {isLoading ? <Loader2 className="animate-spin" size={20} /> : <Compass size={20} />}
-                <span className="text-[11px] uppercase tracking-widest">{imageFiles.length > 0 ? `Process ${imageFiles.length} Artifacts` : 'Retrieve Knowledge'}</span>
+              <button onClick={() => handleSend()} disabled={isLoading} className="flex items-center gap-2.5 px-8 py-2.5 rounded-xl font-black bg-himalaya-red text-himalaya-gold shadow-lg active:scale-95 transition-all disabled:opacity-50">
+                {isLoading ? <Loader2 className="animate-spin" size={18} /> : <Compass size={18} />}
+                <span className="text-[10px] uppercase tracking-widest">Process Content</span>
               </button>
             </div>
           </div>
