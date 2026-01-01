@@ -63,12 +63,59 @@ export const sendMessageToSession = async (
   }
 };
 
+export const analyzeImages = async (images: Array<{data: string, mimeType: string}>, prompt: string): Promise<string> => {
+  // Enhanced detection for OCR requests (including specific Tibetan and Chinese keywords)
+  const isOCRRequest = 
+    prompt.toLowerCase().includes("ocr") || 
+    prompt.includes("识别") || 
+    prompt.includes("提取") || 
+    prompt.includes("原文") || 
+    prompt.includes("transcribe") ||
+    prompt.includes("བོད་ཡིག་") ||
+    prompt.includes("ངོ་འཛིན་");
+  
+  const imageParts = images.map(img => ({
+    inlineData: { data: img.data, mimeType: img.mimeType }
+  }));
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: {
+      parts: [
+        ...imageParts,
+        { text: isOCRRequest 
+          ? `CRITICAL TASK: PURE OCR TEXT EXTRACTION.
+             You are acting as a precision OCR engine for Tibetan (བོད་ཡིག) and other scripts.
+             1. EXTRACT ALL TEXT exactly as it appears. 
+             2. DO NOT TRANSLATE. If the text is Tibetan, keep it as Tibetan.
+             3. DO NOT SUMMARIZE.
+             4. DO NOT explain the text. Just output the extracted text.
+             5. MAINTAIN LINE BREAKS and layout logic.
+             6. FULFILL THIS SPECIFIC USER REQUEST: ${prompt}`
+          : `Perform a scholarly analysis of these images.
+             1. OCR TRANSCRIPTION: Extract the text precisely for each image.
+             2. ANALYSIS: Provide context and philological details for the collection.
+             3. TRANSLATION: Only provide if necessary for understanding the analysis.
+             
+             Current User Request: ${prompt}` 
+        }
+      ]
+    },
+    config: {
+      systemInstruction: SYSTEM_INSTRUCTION,
+      maxOutputTokens: 8192,
+      thinkingConfig: { thinkingBudget: 4096 }
+    }
+  });
+  return response.text || "No analysis generated.";
+};
+
 export const generateSpeech = async (text: string): Promise<Uint8Array> => {
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
     contents: [{ parts: [{ text: `Read this Tibetan/mixed text naturally: ${text}` }] }],
     config: {
-      responseModalities: [Modality.AUDIO],
+      responseModalalities: [Modality.AUDIO],
       speechConfig: {
         voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
       },
@@ -107,14 +154,18 @@ export const analyzeVideo = async (base64Video: string, mimeType: string, prompt
         { inlineData: { data: base64Video, mimeType } },
         { text: `Analyze this video for scholarly retrieval: ${prompt}` }
       ]
+    },
+    config: {
+        systemInstruction: SYSTEM_INSTRUCTION
     }
   });
   return response.text || "";
 };
 
 export const quickExplain = async (text: string): Promise<string> => {
+  // Use correct model name 'gemini-flash-lite-latest' as per guidelines.
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-lite-latest',
+    model: 'gemini-flash-lite-latest',
     contents: `Analyze this segment: "${text}". Provide Tibetan commentary, Chinese translation, and English academic context.`,
     config: {
       systemInstruction: "You are a master philologist. Be brief but academic.",

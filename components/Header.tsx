@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { RefreshCcw, BrainCircuit, Play, Pause, RotateCcw, Coffee, PenTool as Pen, Layout as LayoutIcon, Feather, Search, ArrowDownToLine, Edit3 } from 'lucide-react';
+import { RefreshCcw, BrainCircuit, Play, Pause, RotateCcw, Coffee, PenTool as Pen, Layout as LayoutIcon, Feather, Search, ArrowDownToLine, Edit3, Download } from 'lucide-react';
 
 interface HeaderProps {
   onReset: () => void;
@@ -8,6 +8,7 @@ interface HeaderProps {
   onToggleMemory: () => void;
   onToggleAutoScroll: () => void;
   onToggleInput: () => void;
+  onExport: () => void;
   autoScrollEnabled: boolean;
   isInputVisible: boolean;
   totalCharacters: number; // This now represents Human Words
@@ -21,6 +22,7 @@ const Header: React.FC<HeaderProps> = ({
   onToggleMemory,
   onToggleAutoScroll,
   onToggleInput,
+  onExport,
   autoScrollEnabled,
   isInputVisible,
   totalCharacters,
@@ -178,6 +180,10 @@ const Header: React.FC<HeaderProps> = ({
             <button onClick={onResetLayout} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5 group" title="Reset Layout">
               <LayoutIcon size={16} />
               <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">Layout</span>
+            </button>
+            <button onClick={onExport} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5" title="Export Chat History">
+              <Download size={16} />
+              <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">Export</span>
             </button>
             <button onClick={onToggleMemory} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5" title="Intelligence Memory">
               <BrainCircuit size={16} />

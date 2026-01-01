@@ -6,6 +6,12 @@ export interface GroundingChunk {
   };
 }
 
+export interface MediaItem {
+  type: 'image' | 'video';
+  data: string;
+  mimeType: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'model';
@@ -17,6 +23,7 @@ export interface Message {
   groundingChunks?: GroundingChunk[];
   isPinned?: boolean;
   hasAudio?: boolean;
+  mediaItems?: MediaItem[];
 }
 
 export interface LookupResult {
