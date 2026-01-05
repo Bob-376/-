@@ -6,12 +6,15 @@ import {
   Mic, Video, Upload, FileVideo, Radio, Globe, Type, Filter, Image as ImageIcon,
   Camera, Zap, AlertCircle, RefreshCw, FileText, BookOpen, Quote, ZoomIn, ZoomOut, Layers,
   Type as TypeIcon, Palette, Move, Save, ChevronRight, LayoutPanelTop, SendHorizonal, ArrowUpRight,
-  FileSearch, SearchCode, Type as FontSizeIcon
+  FileSearch, SearchCode, Type as FontSizeIcon, Wand2, Film, Brain, Volume2, MicOff
 } from 'lucide-react';
 import Header from './components/Header';
 import ChatMessage from './components/ChatMessage';
 import { Message, MediaItem } from './types';
-import { sendMessageToSession, quickExplain, transcribeAudio, analyzeVideo, analyzeImages } from './services/geminiService';
+import { 
+  sendMessageToSession, quickExplain, transcribeAudio, analyzeVideo, analyzeImages, 
+  generateImagesNano, generateVideoVeo, editImageNano, connectLiveSession 
+} from './services/geminiService';
 
 const EPIC_GOAL_WORDS = 50000; 
 
@@ -22,6 +25,30 @@ const countHumanWords = (text: string): number => {
   const words = (text.match(/[a-zA-Z0-9'-]+/g) || []).length;
   return tshegs + hanzi + words;
 };
+
+// Live Audio Helper Functions
+function encode(bytes: Uint8Array) {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+function decode(base64: string) {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+  return bytes;
+}
+async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+  }
+  return buffer;
+}
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -34,6 +61,8 @@ const App: React.FC = () => {
   const [isDocked, setIsDocked] = useState(true); 
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
   const [useSearch, setUseSearch] = useState(true);
+  const [thinkingMode, setThinkingMode] = useState(false);
+  const [imageSize, setImageSize] = useState<"1K" | "2K" | "4K">("1K");
 
   // Multimedia states
   const [isRecording, setIsRecording] = useState(false);
@@ -43,14 +72,12 @@ const App: React.FC = () => {
   const [showCamera, setShowCamera] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // Text Overlay Editor States
-  const [editingImageId, setEditingImageId] = useState<string | null>(null);
-  const [overlayText, setOverlayText] = useState("བོད་ཡིག་ཤེས་རིག");
-  const [overlayFontSize, setOverlayFontSize] = useState(40);
-  const [overlayColor, setOverlayColor] = useState("#FFFFFF");
-  const [overlayFont, setOverlayFont] = useState("Noto Sans Tibetan");
-  const [overlayPos, setOverlayPos] = useState({ x: 50, y: 50 });
-  const [isDraggingOverlay, setIsDraggingOverlay] = useState(false);
+  // Live Session States
+  const [isLiveActive, setIsLiveActive] = useState(false);
+  const liveSessionRef = useRef<any>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const nextStartTimeRef = useRef(0);
+  const sourcesRef = useRef(new Set<AudioBufferSourceNode>());
 
   // Layout states
   const [wsPos, setWsPos] = useState({ x: (window.innerWidth - 900) / 2, y: 120 });
@@ -63,22 +90,13 @@ const App: React.FC = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const overlayEditorRef = useRef<HTMLDivElement>(null);
+
+  // Add the missing toggleWorkshop function
+  const toggleWorkshop = useCallback(() => {
+    setIsInputVisible(prev => !prev);
+  }, []);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    // 1. Handle overlay dragging (independent of workshop state)
-    if (isDraggingOverlay && overlayEditorRef.current) {
-      const rect = overlayEditorRef.current.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * 100;
-      const y = ((e.clientY - rect.top) / rect.height) * 100;
-      setOverlayPos({ 
-        x: Math.min(100, Math.max(0, x)), 
-        y: Math.min(100, Math.max(0, y)) 
-      });
-      return; // Prioritize overlay drag
-    }
-
-    // 2. Handle workshop dragging/resizing (only if not maximized/docked)
     if (!isMaximized && !isDocked) {
       if (dragging) {
         setWsPos({ 
@@ -92,16 +110,15 @@ const App: React.FC = () => {
         });
       }
     }
-  }, [dragging, resizing, isMaximized, isDocked, isDraggingOverlay]);
+  }, [dragging, resizing, isMaximized, isDocked]);
 
   const handleMouseUp = useCallback(() => {
     setDragging(null);
     setResizing(null);
-    setIsDraggingOverlay(false);
   }, []);
 
   useEffect(() => {
-    if (dragging || resizing || isDraggingOverlay) {
+    if (dragging || resizing) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
       return () => {
@@ -109,7 +126,7 @@ const App: React.FC = () => {
         window.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [dragging, resizing, isDraggingOverlay, handleMouseMove, handleMouseUp]);
+  }, [dragging, resizing, handleMouseMove, handleMouseUp]);
 
   useEffect(() => {
     if (autoScrollEnabled && !searchQuery) {
@@ -117,22 +134,69 @@ const App: React.FC = () => {
     }
   }, [messages, autoScrollEnabled, searchQuery]);
 
-  useEffect(() => {
-    if (isInputVisible && editorRef.current) {
-      const timer = setTimeout(() => {
-        if (editorRef.current) {
-          editorRef.current.focus();
-          const range = document.createRange();
-          const sel = window.getSelection();
-          range.selectNodeContents(editorRef.current);
-          range.collapse(false);
-          sel?.removeAllRanges();
-          sel?.addRange(range);
-        }
-      }, 100);
-      return () => clearTimeout(timer);
+  // LIVE API Session Logic
+  const toggleLiveSession = async () => {
+    if (isLiveActive) {
+      liveSessionRef.current?.close();
+      setIsLiveActive(false);
+      return;
     }
-  }, [isInputVisible]);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      audioContextRef.current = outputCtx;
+
+      const sessionPromise = connectLiveSession({
+        onopen: () => {
+          const source = inputCtx.createMediaStreamSource(stream);
+          const processor = inputCtx.createScriptProcessor(4096, 1, 1);
+          processor.onaudioprocess = (e) => {
+            const inputData = e.inputBuffer.getChannelData(0);
+            const int16 = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
+            sessionPromise.then(session => {
+              session.sendRealtimeInput({ media: { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' } });
+            });
+          };
+          source.connect(processor);
+          processor.connect(inputCtx.destination);
+        },
+        onmessage: async (msg) => {
+          const base64 = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+          if (base64) {
+            nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx.currentTime);
+            const buffer = await decodeAudioData(decode(base64), outputCtx, 24000, 1);
+            const source = outputCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(outputCtx.destination);
+            source.start(nextStartTimeRef.current);
+            nextStartTimeRef.current += buffer.duration;
+            sourcesRef.current.add(source);
+          }
+          if (msg.serverContent?.interrupted) {
+            sourcesRef.current.forEach(s => s.stop());
+            sourcesRef.current.clear();
+            nextStartTimeRef.current = 0;
+          }
+        },
+        onerror: (e) => console.error(e),
+        onclose: () => setIsLiveActive(false),
+      });
+
+      liveSessionRef.current = await sessionPromise;
+      setIsLiveActive(true);
+    } catch (err) {
+      console.error("Live session failed:", err);
+    }
+  };
+
+  const checkAndOpenSelectKey = async () => {
+    if (!(await (window as any).aistudio.hasSelectedApiKey())) {
+      await (window as any).aistudio.openSelectKey();
+    }
+  };
 
   const handleSend = async (overrideText?: string, targetId?: string, accumulatedText = "") => {
     const text = overrideText || (isInputVisible ? editorRef.current?.innerText.trim() : inputText.trim());
@@ -140,12 +204,8 @@ const App: React.FC = () => {
     
     let sentMedia: MediaItem[] = [];
     if (!overrideText) {
-      if (imageFiles.length > 0) {
-        sentMedia = imageFiles.map(img => ({ type: 'image', data: img.data, mimeType: img.type }));
-      }
-      if (videoFile) {
-        sentMedia.push({ type: 'video', data: videoFile.data, mimeType: videoFile.type });
-      }
+      if (imageFiles.length > 0) sentMedia = imageFiles.map(img => ({ type: 'image', data: img.data, mimeType: img.type }));
+      if (videoFile) sentMedia.push({ type: 'video', data: videoFile.data, mimeType: videoFile.type });
 
       if (editorRef.current) editorRef.current.innerHTML = '';
       setInputText("");
@@ -160,13 +220,7 @@ const App: React.FC = () => {
     if (!targetId) {
       setMessages(prev => [
         ...prev,
-        { 
-          id: (Date.now() + 1).toString(), 
-          role: 'user', 
-          text: text || (sentMedia.length > 0 ? `Analyze ${sentMedia.length} artifacts.` : ""), 
-          timestamp: Date.now(), 
-          mediaItems: sentMedia.length > 0 ? sentMedia : undefined 
-        },
+        { id: (Date.now() + 1).toString(), role: 'user', text: text || "Analyze artifacts.", timestamp: Date.now(), mediaItems: sentMedia.length > 0 ? sentMedia : undefined },
         { id: botMsgId, role: 'model', text: 'འཕྲུལ་ཆས་ཀྱིས་ཤེས་རིག་གཏེར་མཛོད་ནས་བཙལ་འཚོལ་བྱེད་བཞིན་པ...', isStreaming: true, timestamp: Date.now() }
       ]);
     }
@@ -177,22 +231,20 @@ const App: React.FC = () => {
       const videoOnly = sentMedia.filter(m => m.type === 'video');
 
       if (imagesOnly.length > 0 && !targetId) {
-        const analysis = await analyzeImages(imagesOnly.map(img => ({ data: img.data, mimeType: img.mimeType })), text || "Analyze artifacts.");
-        result = { text: analysis, grounding: null };
+        result = { text: await analyzeImages(imagesOnly.map(img => ({ data: img.data, mimeType: img.mimeType })), text || "Analyze artifacts."), grounding: null };
       } else if (videoOnly.length > 0 && !targetId) {
-        const analysis = await analyzeVideo(videoOnly[0].data, videoOnly[0].mimeType, text || "Analyze video.");
-        result = { text: analysis, grounding: null };
+        result = { text: await analyzeVideo(videoOnly[0].data, videoOnly[0].mimeType, text || "Analyze video."), grounding: null };
       } else {
-        result = await sendMessageToSession(text || "Analyze context.", history, (chunk) => {
+        result = await sendMessageToSession(text || "Explain context.", history, (chunk) => {
           setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: accumulatedText + chunk } : m));
-        }, useSearch);
+        }, { useSearch, thinkingMode });
       }
       
       const fullContent = (accumulatedText + result.text).replace("[COMPLETE]", "");
       const hasContinueSignal = fullContent.includes("[CONTINUE_SIGNAL]");
       const cleanedContent = fullContent.replace("[CONTINUE_SIGNAL]", "");
       
-      if (hasContinueSignal && messages.reduce((s, m) => s + countHumanWords(m.text), 0) + countHumanWords(cleanedContent) < EPIC_GOAL_WORDS) {
+      if (hasContinueSignal && totalWordsCountSum + countHumanWords(cleanedContent) < EPIC_GOAL_WORDS) {
         setTimeout(() => handleSend("མུ་མཐུད་དུ་ཞིབ་འགྲེལ་གནང་རོགས། (Continue...)", botMsgId, cleanedContent), 600);
       } else {
         setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: cleanedContent, isStreaming: false, groundingChunks: result.grounding } : m));
@@ -200,163 +252,78 @@ const App: React.FC = () => {
       }
     } catch (e) {
       setIsLoading(false);
-      setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, isStreaming: false, text: "Error: Interrupted." } : m));
+      setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, isStreaming: false, text: "Interrupted." } : m));
     }
   };
 
-  const handleActionClick = (actionText: string) => {
-    handleSend(actionText);
-  };
-
-  const handleImageOCR = async (mediaItem: MediaItem) => {
-    if (isLoading) return;
-    
-    const botMsgId = Date.now().toString();
+  const handleImageOCR = async (media: MediaItem) => {
     setIsLoading(true);
-    
+    const botMsgId = Date.now().toString();
     setMessages(prev => [
       ...prev,
-      { 
-        id: (Date.now() + 1).toString(), 
-        role: 'user', 
-        text: "བོད་ཡིག་原文提取 (Extracting Tibetan text...)", 
-        timestamp: Date.now(), 
-        mediaItems: [mediaItem] 
-      },
+      { id: (Date.now() + 1).toString(), role: 'user', text: "བོད་ཡིག་原文提取 (Extracting Tibetan text...)", timestamp: Date.now(), mediaItems: [media] },
       { id: botMsgId, role: 'model', text: 'འཕྲུལ་ཆས་ཀྱིས་པར་རིས་ནང་གི་བོད་ཡིག་ངོ་འཛིན་བྱེད་བཞིན་པ...', isStreaming: true, timestamp: Date.now() }
     ]);
-
     try {
-      const result = await analyzeImages([{ data: mediaItem.data, mimeType: mediaItem.mimeType }], "Extract all Tibetan (བོད་ཡིག) text from this image as original script. No summary.");
-      setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: result, isStreaming: false } : m));
+      const text = await analyzeImages([{ data: media.data, mimeType: media.mimeType }], "Extract all Tibetan (བོད་ཡིག) text from this image accurately.");
+      setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text, isStreaming: false } : m));
     } catch (e) {
-      setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: "OCR Error: Extraction failed.", isStreaming: false } : m));
-    } finally {
-      setIsLoading(false);
+      setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: "OCR Analysis failed.", isStreaming: false } : m));
     }
+    setIsLoading(false);
   };
 
-  const applyTextOverlay = () => {
-    if (!editingImageId) return;
-    const imgObj = imageFiles.find(img => img.id === editingImageId);
-    if (!imgObj) return;
-
-    const canvas = document.createElement('canvas');
-    const img = new Image();
-    img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.drawImage(img, 0, 0);
-      ctx.font = `${(overlayFontSize / 100) * img.width}px "${overlayFont}"`;
-      ctx.fillStyle = overlayColor;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const px = (overlayPos.x / 100) * canvas.width;
-      const py = (overlayPos.y / 100) * canvas.height;
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-      ctx.shadowBlur = 10;
-      ctx.fillText(overlayText, px, py);
-      const newDataUrl = canvas.toDataURL(imgObj.type);
-      setImageFiles(prev => prev.map(item => item.id === editingImageId ? { ...item, data: newDataUrl.split(',')[1] } : item));
-      setEditingImageId(null);
-    };
-    img.src = `data:${imgObj.type};base64,${imgObj.data}`;
+  const handleGenerateImage = async () => {
+    const text = isInputVisible ? editorRef.current?.innerText.trim() : inputText.trim();
+    if (!text) return;
+    await checkAndOpenSelectKey();
+    setIsLoading(true);
+    try {
+      const b64 = await generateImagesNano(text, imageSize);
+      setMessages(prev => [...prev, 
+        { id: Date.now().toString(), role: 'user', text: `Generate ${imageSize} image: ${text}`, timestamp: Date.now() },
+        { id: (Date.now()+1).toString(), role: 'model', text: 'Artifact generated.', timestamp: Date.now(), mediaItems: [{ type: 'image', data: b64, mimeType: 'image/png' }] }
+      ]);
+      setInputText("");
+      if (editorRef.current) editorRef.current.innerHTML = '';
+    } catch (e) { console.error(e); }
+    setIsLoading(false);
   };
 
-  const toggleWorkshop = () => {
-    if (!isInputVisible && quickInputRef.current) {
-      const currentText = quickInputRef.current.value;
-      if (editorRef.current) editorRef.current.innerText = currentText;
-    } else if (isInputVisible && editorRef.current) {
-      const currentText = editorRef.current.innerText;
-      setInputText(currentText);
-    }
-    setIsInputVisible(!isInputVisible);
+  const handleAnimateImage = async (media: MediaItem) => {
+    await checkAndOpenSelectKey();
+    setIsLoading(true);
+    try {
+      const videoUri = await generateVideoVeo("Animate this artifact with cultural essence.", media.data);
+      setMessages(prev => [...prev, 
+        { id: Date.now().toString(), role: 'user', text: `Animate artifact with Veo.`, timestamp: Date.now() },
+        { id: (Date.now()+1).toString(), role: 'model', text: 'Motion synthesis complete.', timestamp: Date.now(), mediaItems: [{ type: 'video', data: videoUri, mimeType: 'video/mp4' }] }
+      ]);
+    } catch (e) { console.error(e); }
+    setIsLoading(false);
+  };
+
+  const handleEditImage = async (media: MediaItem, editPrompt: string) => {
+    setIsLoading(true);
+    try {
+      const b64 = await editImageNano(media.data, media.mimeType, editPrompt);
+      setMessages(prev => [...prev, 
+        { id: Date.now().toString(), role: 'user', text: `Edit artifact: ${editPrompt}`, timestamp: Date.now() },
+        { id: (Date.now()+1).toString(), role: 'model', text: 'Artifact modified.', timestamp: Date.now(), mediaItems: [{ type: 'image', data: b64, mimeType: 'image/png' }] }
+      ]);
+    } catch (e) { console.error(e); }
+    setIsLoading(false);
   };
 
   const handleExport = () => {
     if (messages.length === 0) return;
-    const textContent = messages.map(m => `[${new Date(m.timestamp).toLocaleString()}] ${m.role === 'user' ? 'USER' : 'SYSTEM'}:\n${m.text.replace(/\[CONTINUE_SIGNAL\]|\[COMPLETE\]/g, "").trim()}\n\n------------------\n`).join('\n');
+    const textContent = messages.map(m => `[${new Date(m.timestamp).toLocaleString()}] ${m.role === 'user' ? 'USER' : 'SYSTEM'}:\n${m.text.trim()}\n\n`).join('\n');
     const blob = new Blob([textContent], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `retrieval_${new Date().toISOString().slice(0,10)}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      const chunks: Blob[] = [];
-      recorder.ondataavailable = (e: any) => chunks.push(e.data);
-      recorder.onstop = async () => {
-        setMediaLoading(true);
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-          const base64 = (reader.result as string).split(',')[1];
-          const transcript = await transcribeAudio(base64);
-          if (isInputVisible && editorRef.current) {
-            editorRef.current.innerText += " " + transcript;
-          } else {
-            setInputText(prev => prev + " " + transcript);
-          }
-          setMediaLoading(false);
-        };
-        reader.readAsDataURL(blob);
-      };
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
-    } catch (err) { console.error(err); }
-  };
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []) as File[];
-    if (files.length > 0) {
-      setMediaLoading(true);
-      const promises = files.map((file: File) => new Promise<{id: string, data: string, type: string}>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve({ id: Math.random().toString(36).substr(2, 9), data: (reader.result as string).split(',')[1], type: file.type });
-        reader.readAsDataURL(file);
-      }));
-      Promise.all(promises).then(newImages => {
-        setImageFiles(prev => [...prev, ...newImages]);
-        setMediaLoading(false);
-      });
-    }
-    e.target.value = '';
-  };
-
-  const startCamera = async () => {
-    setCameraError(null);
-    setShowCamera(true);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      if (videoRef.current) videoRef.current.srcObject = stream;
-    } catch (err: any) { setCameraError("Camera access error."); }
-  };
-
-  const capturePhoto = () => {
-    if (videoRef.current) {
-      const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth; canvas.height = videoRef.current.videoHeight;
-      canvas.getContext('2d')?.drawImage(videoRef.current, 0, 0);
-      setImageFiles(prev => [...prev, { id: Math.random().toString(36).substr(2, 9), data: canvas.toDataURL('image/jpeg').split(',')[1], type: 'image/jpeg' }]);
-      setShowCamera(false);
-    }
+    const a = document.createElement('a'); a.href = url; a.download = `retrieval_${Date.now()}.txt`; a.click();
   };
 
   const totalWordsCountSum = useMemo(() => messages.reduce((sum, m) => sum + countHumanWords(m.text), 0), [messages]);
-
-  const changeFontSize = (delta: number) => {
-    setFontSize(prev => Math.min(72, Math.max(12, prev + delta)));
-  };
 
   return (
     <div className="flex flex-col h-screen bg-himalaya-cream font-tibetan overflow-hidden relative">
@@ -388,6 +355,8 @@ const App: React.FC = () => {
               message={msg} 
               onDelete={(id) => setMessages(prev => prev.filter(m => m.id !== id))} 
               onOCR={handleImageOCR}
+              onAnimate={handleAnimateImage}
+              onEdit={handleEditImage}
             />
           ))}
           <div ref={messagesEndRef} />
@@ -395,71 +364,68 @@ const App: React.FC = () => {
       </main>
 
       {!isInputVisible && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-full max-w-3xl px-4 z-[150] animate-in slide-in-from-bottom-10 duration-500">
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-full max-w-4xl px-4 z-[150] animate-in slide-in-from-bottom-10">
           <div className="bg-white/80 backdrop-blur-xl border-2 border-himalaya-gold shadow-2xl rounded-[2rem] p-2 flex items-center gap-2 group">
              <div className="flex items-center gap-1.5 pl-2">
                 <button 
-                  onClick={isRecording ? () => mediaRecorderRef.current?.stop() : startRecording} 
+                  onClick={toggleLiveSession}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isLiveActive ? 'bg-green-600 text-white animate-pulse' : 'text-gray-400 hover:bg-gray-100'}`}
+                  title="Live Scholar Conversation"
+                >
+                   {isLiveActive ? <Volume2 size={20} /> : <Radio size={20} />}
+                </button>
+                <button 
+                  onClick={isRecording ? () => mediaRecorderRef.current?.stop() : async () => {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const recorder = new MediaRecorder(stream);
+                    const chunks: any[] = [];
+                    recorder.ondataavailable = e => chunks.push(e.data);
+                    recorder.onstop = async () => {
+                      setMediaLoading(true);
+                      const blob = new Blob(chunks, { type: 'audio/webm' });
+                      const reader = new FileReader();
+                      reader.onloadend = async () => {
+                        const transcript = await transcribeAudio((reader.result as string).split(',')[1]);
+                        setInputText(p => p + transcript);
+                        setMediaLoading(false);
+                      };
+                      reader.readAsDataURL(blob);
+                    };
+                    recorder.start(); mediaRecorderRef.current = recorder; setIsRecording(true);
+                  }}
                   className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-gray-400 hover:bg-gray-100'}`}
-                  title="སྐད་འཇུག་བྱེད་པ། | Voice Input: Transcribe spoken Tibetan into text"
+                  title="Voice Input"
                 >
                    <Mic size={20} />
                 </button>
-                <label 
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 cursor-pointer"
-                  title="པར་རིས་ཡར་སྤྲོད། | Upload artifacts for image analysis and text extraction"
-                >
-                   <ImageIcon size={20} />
-                   <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
-                </label>
              </div>
-             
-             {imageFiles.length > 0 && (
-               <div className="flex items-center gap-2 bg-himalaya-gold/10 px-3 py-1.5 rounded-2xl border border-himalaya-gold/20 shrink-0">
-                  <div className="w-8 h-8 rounded-lg overflow-hidden border border-himalaya-gold">
-                    <img src={`data:image/jpeg;base64,${imageFiles[imageFiles.length-1].data}`} className="w-full h-full object-cover" alt="Last Upload" />
-                  </div>
-                  <span className="text-[10px] font-black text-himalaya-red uppercase tracking-tighter">x{imageFiles.length}</span>
-                  <button 
-                    onClick={() => handleActionClick("Extract original Tibetan text from the last uploaded image accurately.")}
-                    className="w-8 h-8 bg-green-600 text-white rounded-lg flex items-center justify-center hover:bg-green-700 transition-colors shadow-sm"
-                    title="བོད་ཡིག་原文提取 | Rapid OCR: Extract Tibetan text from the uploaded artifact"
-                  >
-                    <SearchCode size={16} />
-                  </button>
-                  <button 
-                    onClick={() => setImageFiles([])} 
-                    className="text-gray-400 hover:text-red-600"
-                    title="པར་རིས་བསུབ་པ། | Clear all uploaded images"
-                  >
-                    <X size={14} />
-                  </button>
-               </div>
-             )}
 
              <textarea 
-               ref={quickInputRef}
                value={inputText}
                onChange={(e) => setInputText(e.target.value)}
-               placeholder="Enter Tibetan text or query..."
-               className="flex-1 bg-transparent border-none outline-none font-tibetan py-2.5 px-3 resize-none max-h-32 text-lg custom-scrollbar"
+               placeholder="Write manuscript or prompt..."
+               className="flex-1 bg-transparent border-none outline-none font-tibetan py-2.5 px-3 resize-none max-h-32 text-lg"
                rows={1}
                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
              />
-             <div className="flex items-center gap-1.5 pr-1">
-                <button 
-                  onClick={toggleWorkshop} 
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-himalaya-gold hover:bg-himalaya-gold/10" 
-                  title="ལས་ཁང་སྒོ་འབྱེད་པ། | Expand the research workshop for detailed writing"
-                >
-                   <LayoutPanelTop size={20} />
-                </button>
-                <button 
-                  onClick={() => handleSend()} 
-                  disabled={(!inputText.trim() && imageFiles.length === 0) || isLoading} 
-                  className="w-12 h-12 bg-himalaya-red text-himalaya-gold rounded-[1.25rem] flex items-center justify-center shadow-lg active:scale-95 transition-all disabled:opacity-50"
-                  title="བརྡ་འཕྲིན་གཏོང་བ། | Send your manuscript or artifacts for retrieval"
-                >
+
+             <div className="flex items-center gap-1 pr-1">
+                <div className="flex flex-col items-center mr-1">
+                   <button onClick={() => setThinkingMode(!thinkingMode)} className={`p-2 rounded-lg ${thinkingMode ? 'text-purple-600' : 'text-gray-300'}`} title="Deep Thinking Mode">
+                      <Brain size={18} />
+                   </button>
+                </div>
+                <div className="flex items-center bg-gray-50 rounded-xl p-1 gap-1 border border-gray-100">
+                  <button onClick={handleGenerateImage} className="w-10 h-10 flex items-center justify-center text-himalaya-gold hover:text-himalaya-red" title="Imagen Generation">
+                    <Wand2 size={20} />
+                  </button>
+                  <select value={imageSize} onChange={e => setImageSize(e.target.value as any)} className="text-[8px] font-black uppercase bg-white border-none outline-none">
+                    <option value="1K">1K</option>
+                    <option value="2K">2K</option>
+                    <option value="4K">4K</option>
+                  </select>
+                </div>
+                <button onClick={() => handleSend()} disabled={isLoading} className="w-12 h-12 bg-himalaya-red text-himalaya-gold rounded-[1.25rem] flex items-center justify-center shadow-lg transition-all active:scale-95 disabled:opacity-50">
                    {isLoading ? <Loader2 size={20} className="animate-spin" /> : <SendHorizonal size={22} />}
                 </button>
              </div>
@@ -467,255 +433,45 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {editingImageId && (
-        <div className="fixed inset-0 z-[400] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-5xl h-[85vh] rounded-[3rem] shadow-2xl overflow-hidden flex flex-col border-4 border-himalaya-gold">
-            <div className="h-16 bg-himalaya-red flex items-center justify-between px-8">
-              <span className="text-[11px] font-black text-himalaya-gold uppercase tracking-widest">Image Philology Workshop</span>
-              <button 
-                onClick={() => setEditingImageId(null)} 
-                className="text-himalaya-gold hover:text-white"
-                title="སྒོ་རྒྱག་པ། | Close image editor"
-              >
-                <X size={24} />
-              </button>
-            </div>
-            <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-              <div className="flex-1 bg-gray-100 flex items-center justify-center relative p-8">
-                <div ref={overlayEditorRef} className="relative shadow-2xl border-4 border-white max-w-full max-h-full overflow-hidden flex items-center justify-center">
-                  <img src={`data:image/jpeg;base64,${imageFiles.find(img => img.id === editingImageId)?.data}`} className="max-w-full max-h-full pointer-events-none" alt="Artifact" />
-                  <div 
-                    onMouseDown={(e) => { e.stopPropagation(); setIsDraggingOverlay(true); }}
-                    onTouchStart={(e) => { e.stopPropagation(); setIsDraggingOverlay(true); }}
-                    style={{ 
-                      position: 'absolute', 
-                      left: `${overlayPos.x}%`, 
-                      top: `${overlayPos.y}%`, 
-                      transform: 'translate(-50%, -50%)', 
-                      fontSize: `${overlayFontSize}px`, 
-                      color: overlayColor, 
-                      fontFamily: `"${overlayFont}"`, 
-                      textShadow: '2px 2px 4px rgba(0,0,0,0.5)', 
-                      cursor: 'grab' 
-                    }} 
-                    className={`whitespace-pre font-bold leading-tight select-none transition-transform duration-75 ${isDraggingOverlay ? 'scale-110 opacity-80 cursor-grabbing' : ''}`}
-                    title="Drag to reposition text overlay"
-                  >
-                    {overlayText}
-                  </div>
-                </div>
-              </div>
-              <div className="w-full md:w-80 bg-gray-50 border-l p-8 flex flex-col gap-6 overflow-y-auto">
-                <textarea 
-                  value={overlayText} 
-                  onChange={(e) => setOverlayText(e.target.value)} 
-                  className="w-full border rounded-xl p-3 text-sm h-24 font-tibetan"
-                  title="Overlay Text content"
-                />
-                <input 
-                  type="range" 
-                  min="10" 
-                  max="200" 
-                  value={overlayFontSize} 
-                  onChange={(e) => setOverlayFontSize(parseInt(e.target.value))} 
-                  className="w-full accent-himalaya-red" 
-                  title="ཡིག་གཟུགས་ཆེ་ཆུང་། | Text size slider"
-                />
-                <div className="flex flex-wrap gap-2">
-                  {["#FFFFFF", "#000000", "#8B0000", "#D4AF37"].map(c => (
-                    <button 
-                      key={c} 
-                      onClick={() => setOverlayColor(c)} 
-                      className={`w-8 h-8 rounded-full border-2 ${overlayColor === c ? 'border-himalaya-red scale-110' : 'border-transparent'}`} 
-                      style={{ backgroundColor: c }} 
-                      title={`Select color: ${c}`}
-                    />
-                  ))}
-                </div>
-                <button 
-                  onClick={applyTextOverlay} 
-                  className="mt-auto w-full bg-himalaya-red text-himalaya-gold py-4 rounded-2xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all"
-                  title="Apply changes and save overlay to image"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {isInputVisible && (
         <div 
-          className={`fixed flex flex-col bg-white overflow-hidden transition-all duration-500 ease-in-out ${isMaximized ? 'inset-0 !w-full !h-full border-0 rounded-0 z-[200]' : isDocked ? 'bottom-0 left-0 right-0 h-[65vh] !w-full border-t-4 border-himalaya-gold rounded-t-[3rem] z-[200]' : 'border-4 border-himalaya-gold shadow-2xl rounded-[2.5rem] z-[200]'}`} 
+          className={`fixed flex flex-col bg-white overflow-hidden transition-all duration-500 ease-in-out ${isMaximized ? 'inset-0 z-[200]' : isDocked ? 'bottom-0 left-0 right-0 h-[65vh] border-t-4 border-himalaya-gold rounded-t-[3rem] z-[200]' : 'border-4 border-himalaya-gold shadow-2xl rounded-[2.5rem] z-[200]'}`} 
           style={(!isMaximized && !isDocked) ? { width: `${wsSize.width}px`, height: `${wsSize.height}px`, left: `${wsPos.x}px`, top: `${wsPos.y}px` } : {}}
         >
           <div onMouseDown={(e) => { if (isMaximized || isDocked || (e.target as HTMLElement).closest('button')) return; setDragging({ startX: e.clientX, startY: e.clientY, initialX: wsPos.x, initialY: wsPos.y }); }}
             className="h-14 bg-gray-50 flex items-center justify-between px-8 border-b cursor-grab active:cursor-grabbing shrink-0"
           >
             <div className="flex items-center gap-4">
-              <div className="p-1.5 bg-himalaya-red rounded-lg text-himalaya-gold"><Edit3 size={18} /></div>
-              <span className="text-[11px] font-bold text-himalaya-red uppercase tracking-widest hidden sm:inline">Master Scribe Workshop</span>
+              <span className="text-[11px] font-bold text-himalaya-red uppercase tracking-widest">Master Scribe Workshop</span>
+              <button onClick={() => setThinkingMode(!thinkingMode)} className={`flex items-center gap-1 text-[8px] font-black px-2 py-0.5 rounded-full border ${thinkingMode ? 'bg-purple-600 text-white border-purple-700' : 'bg-gray-200 text-gray-500 border-gray-300'}`}>
+                <Brain size={10} /> Thinking {thinkingMode ? 'ON' : 'OFF'}
+              </button>
             </div>
             <div className="flex items-center gap-2">
-              {/* Font Size Controls */}
-              <div className="flex items-center bg-white border border-gray-200 rounded-full p-0.5 shadow-sm mr-2" title="ཡིག་གཟུགས་ཆེ་ཆུང་སྒྲིག་པ། | Adjust font size for writing">
-                <button onClick={() => changeFontSize(-2)} className="p-1 text-gray-400 hover:text-himalaya-red transition-colors" title="ཆུང་དུ་གཏོང་བ། | Decrease size"><Minus size={14} /></button>
-                <div className="px-2 flex items-center gap-1 border-x border-gray-100 min-w-[48px] justify-center">
-                  <span className="text-[10px] font-black tabular-nums">{fontSize}</span>
-                  <span className="text-[7px] font-bold text-gray-300 uppercase">px</span>
-                </div>
-                <button onClick={() => changeFontSize(2)} className="p-1 text-gray-400 hover:text-himalaya-red transition-colors" title="ཆེ་རུ་གཏོང་བ། | Increase size"><Plus size={14} /></button>
-              </div>
-
-              <button 
-                onClick={() => setIsDocked(!isDocked)} 
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[8px] font-black uppercase transition-all ${isDocked ? 'bg-himalaya-red text-white' : 'bg-gray-200 text-gray-500'}`}
-                title="སྒེའུ་ཁུང་གི་གནས་བབ། | Switch between docked and floating workshop modes"
-              >
-                {isDocked ? 'Docked' : 'Float'}
-              </button>
-              <button 
-                onClick={() => setUseSearch(!useSearch)} 
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[8px] font-black uppercase transition-all ${useSearch ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-200 text-gray-500'}`}
-                title="དྲ་བའི་བཙལ་འཚོལ། | Enable or disable real-time Google Search grounding"
-              >
-                <Globe size={10} /> Search {useSearch ? 'ON' : 'OFF'}
-              </button>
-              <button 
-                onClick={() => setIsMaximized(!isMaximized)} 
-                className="text-gray-400 hover:text-himalaya-red ml-1"
-                title={isMaximized ? "སྒེའུ་ཁུང་ཆུང་དུ་གཏོང་བ། | Restore window size" : "སྒེའུ་ཁུང་ཆེ་རུ་གཏོང་བ། | Maximize window to full screen"}
-              >
-                {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-              </button>
-              <button 
-                onClick={toggleWorkshop} 
-                className="p-1 text-gray-400 hover:text-red-600"
-                title="སྒོ་རྒྱག་པ། | Close workshop"
-              >
-                <X size={16} />
-              </button>
+              <button onClick={() => setIsDocked(!isDocked)} className="px-2.5 py-1 bg-gray-200 rounded-full text-[8px] font-black uppercase">{isDocked ? 'Docked' : 'Float'}</button>
+              <button onClick={() => setUseSearch(!useSearch)} className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase ${useSearch ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>Search {useSearch ? 'ON' : 'OFF'}</button>
+              <button onClick={() => setIsMaximized(!isMaximized)} className="text-gray-400 hover:text-himalaya-red">{isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
+              <button onClick={toggleWorkshop} className="p-1 text-gray-400 hover:text-red-600"><X size={16} /></button>
             </div>
           </div>
 
           <div className="flex-1 flex flex-col min-h-0 bg-white">
-            <div 
-              ref={editorRef} 
-              contentEditable 
-              spellCheck="false" 
-              style={{ fontSize: `${fontSize}px` }} 
-              data-placeholder="Enter Tibetan text or query..."
-              className="workshop-editor flex-1 min-h-0 outline-none font-tibetan leading-[1.8] overflow-y-auto p-10 text-justify custom-scrollbar transition-all duration-200" 
-            />
-            
-            {imageFiles.length > 0 && (
-              <div className="shrink-0 bg-gray-50 border-t border-gray-100 p-3 animate-in slide-in-from-bottom-2 duration-300">
-                <div className="flex items-center justify-between mb-2 px-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[8px] font-black text-himalaya-gold uppercase bg-himalaya-red px-1.5 py-0.5 rounded">Artifacts</span>
-                    <button 
-                      onClick={() => handleActionClick("Extract all Tibetan text from these images accurately.")} 
-                      className="flex items-center gap-1 px-2 py-0.5 bg-white border border-himalaya-gold/30 rounded-full text-[9px] font-bold text-himalaya-red hover:bg-himalaya-gold/10"
-                      title="བོད་ཡིག་原文 | Extract original Tibetan text from all attached images"
-                    >
-                      <SearchCode size={10} /> བོད་ཡིག་原文
-                    </button>
-                  </div>
-                  <button 
-                    onClick={() => setImageFiles([])} 
-                    className="text-[8px] font-black uppercase text-red-600"
-                    title="Clear artifacts"
-                  >
-                    Clear
-                  </button>
-                </div>
-                <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
-                  {imageFiles.map((file) => (
-                    <div key={file.id} className="w-14 h-14 bg-himalaya-gold/10 border border-himalaya-gold/30 rounded-lg overflow-hidden group relative shrink-0">
-                      <img src={`data:image/jpeg;base64,${file.data}`} className="w-full h-full object-cover" alt="Thumb" />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1.5">
-                        <button 
-                          onClick={() => setEditingImageId(file.id)} 
-                          className="text-himalaya-gold hover:scale-110"
-                          title="Edit text overlay"
-                        >
-                          <TypeIcon size={12} />
-                        </button>
-                        <button 
-                          onClick={() => setImageFiles(p => p.filter(i => i.id !== file.id))} 
-                          className="text-white hover:scale-110"
-                          title="Remove image"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="h-20 shrink-0 border-t border-gray-200 px-8 flex items-center justify-between bg-white shadow-[0_-4px_12px_rgba(0,0,0,0.03)]">
+            <div ref={editorRef} contentEditable spellCheck="false" style={{ fontSize: `${fontSize}px` }} data-placeholder="Enter manuscript..." className="workshop-editor flex-1 outline-none font-tibetan leading-[1.8] overflow-y-auto p-10 custom-scrollbar" />
+            <div className="h-20 border-t flex items-center justify-between px-8 bg-white shadow-inner">
               <div className="flex items-center gap-3">
-                <button 
-                  onClick={isRecording ? () => mediaRecorderRef.current?.stop() : startRecording} 
-                  className={`w-11 h-11 rounded-full flex items-center justify-center shadow-md transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-gray-400'}`}
-                  title="སྐད་འཇུག་བྱེད་པ། | Voice Input"
-                >
-                  <Mic size={20} />
-                </button>
-                <div className="flex items-center bg-gray-50 border border-gray-100 rounded-full p-1">
-                  <label 
-                    className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-himalaya-gold cursor-pointer"
-                    title="པར་རིས་ཡར་སྤྲོད། | Upload Image"
-                  >
-                    <ImageIcon size={20} />
-                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
-                  </label>
-                  <div className="w-px h-5 bg-gray-200 mx-0.5" />
-                  <button 
-                    onClick={startCamera} 
-                    className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-himalaya-red"
-                    title="པར་རྒྱག་པ། | Open Camera"
-                  >
-                    <Camera size={20} />
-                  </button>
-                </div>
-                {mediaLoading && <Loader2 className="animate-spin text-himalaya-gold" size={20} />}
+                <button onClick={handleGenerateImage} className="flex items-center gap-2 bg-himalaya-gold text-himalaya-red px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-md hover:scale-105 transition-all"><Wand2 size={16} /> Generate Artifact</button>
+                <select value={imageSize} onChange={e => setImageSize(e.target.value as any)} className="text-[9px] font-black uppercase border p-1 rounded">
+                   <option value="1K">1K RES</option>
+                   <option value="2K">2K RES</option>
+                   <option value="4K">4K RES</option>
+                </select>
               </div>
-              <button 
-                onClick={() => handleSend()} 
-                disabled={isLoading} 
-                className="flex items-center gap-2.5 px-8 py-2.5 rounded-xl font-black bg-himalaya-red text-himalaya-gold shadow-lg active:scale-95 transition-all disabled:opacity-50"
-                title="བརྡ་འཕྲིན་གཏོང་བ། | Send for scholary analysis"
-              >
+              <button onClick={() => handleSend()} disabled={isLoading} className="flex items-center gap-2.5 px-8 py-2.5 rounded-xl font-black bg-himalaya-red text-himalaya-gold shadow-lg disabled:opacity-50">
                 {isLoading ? <Loader2 className="animate-spin" size={18} /> : <Compass size={18} />}
-                <span className="text-[10px] uppercase tracking-widest">Process Content</span>
+                <span className="text-[10px] uppercase tracking-widest">Synthesize Knowledge</span>
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {showCamera && (
-        <div className="fixed inset-0 z-[500] bg-black flex flex-col items-center justify-center">
-          {cameraError ? <div className="text-white p-10 text-center"><AlertCircle size={40} className="mx-auto mb-4" /><p>{cameraError}</p><button onClick={() => setShowCamera(false)} className="mt-6 px-8 py-2 bg-white text-black rounded-full">Close</button></div> : 
-          <><video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-          <div className="absolute bottom-10 flex gap-6">
-            <button 
-              onClick={capturePhoto} 
-              className="w-20 h-20 rounded-full bg-white border-8 border-himalaya-gold shadow-2xl active:scale-90 transition-transform" 
-              title="པར་རྒྱག་པ། | Take Photo"
-            />
-            <button 
-              onClick={() => setShowCamera(false)} 
-              className="w-20 h-20 rounded-full bg-red-600 text-white flex items-center justify-center"
-              title="སྒོ་རྒྱག་པ། | Close Camera"
-            >
-              <X size={40} />
-            </button>
-          </div></>}
         </div>
       )}
     </div>

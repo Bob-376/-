@@ -1,43 +1,51 @@
 
-import { GoogleGenAI, Chat, GenerateContentResponse, Modality } from "@google/genai";
+import { GoogleGenAI, Chat, GenerateContentResponse, Modality, Type, LiveServerMessage } from "@google/genai";
 
 const SYSTEM_INSTRUCTION = `
 You are the "Grand Intelligent Retrieval Architect of the Snowy Peaks" (ཤེས་རིག་བཙལ་བཤེར་མ་ལག).
 Your mission is to provide an UNPRECEDENTED, massive, and exhaustive scholarly exploration.
 
-STRICT OPERATIONAL PROTOCOL FOR THE 50,000 HUMAN WORD MARATHON:
-1. WORD COUNT METRIC:
-   - Tibetan: Measured strictly in Tshegs (ཚེག).
-   - Chinese: Measured strictly in individual Hanzi characters.
-   - English: Measured in space-separated words.
-   - TOTAL TARGET: 50,000 human-centric word units.
-
-2. ANTI-SUMMARY RULE: Never summarize. Every response must be deep, expansive, and scholarly.
-3. TURN-BASED TARGET: Aim for maximum possible length (8000+ tokens) in every response.
-4. GRANULAR DECONSTRUCTION: Deconstruct concepts syllable-by-syllable.
-5. CHAINING: Append [CONTINUE_SIGNAL] until the 50,000 human-word threshold is met. 
-   ONLY append [COMPLETE] when the 50,000 human-word threshold is surpassed.
-6. NO META-TALK: Output ONLY the scholarly text.
+STRICT OPERATIONAL PROTOCOL:
+1. WORD COUNT METRIC: Tibetan (Tshegs), Chinese (Hanzi), English (Words). Target: 50,000 human-centric units.
+2. ANTI-SUMMARY RULE: Never summarize. Be deep, expansive, and scholarly.
+3. TURN-BASED TARGET: Aim for maximum length (8000+ tokens).
+4. CHAINING: Append [CONTINUE_SIGNAL] until threshold is met. Append [COMPLETE] only when surpassed.
+5. NO META-TALK: Output ONLY scholarly text.
 `;
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const sendMessageToSession = async (
   text: string,
   history: any[],
   onUpdate: (text: string) => void,
-  useSearch = true
-): Promise<{text: string, grounding?: any[]}> => {
-  const model = useSearch ? 'gemini-3-flash-preview' : 'gemini-3-pro-preview';
+  options: { useSearch?: boolean; thinkingMode?: boolean; fastMode?: boolean } = {}
+): Promise<{ text: string; grounding?: any[] }> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  // Model selection based on requirements
+  // Use gemini-flash-lite-latest for basic fast responses
+  let model = 'gemini-flash-lite-latest'; 
+  if (options.useSearch) model = 'gemini-3-flash-preview';
+  if (options.thinkingMode) model = 'gemini-3-pro-preview';
+
+  const config: any = {
+    systemInstruction: SYSTEM_INSTRUCTION,
+    temperature: 0.9,
+  };
+
+  if (options.thinkingMode) {
+    config.thinkingConfig = { thinkingBudget: 32768 };
+    // maxOutputTokens is omitted per instructions when maxing thinking budget
+  } else {
+    config.maxOutputTokens = 8192;
+  }
+
+  if (options.useSearch) {
+    config.tools = [{ googleSearch: {} }];
+  }
+
   const chat = ai.chats.create({
     model: model,
-    config: { 
-      systemInstruction: SYSTEM_INSTRUCTION,
-      maxOutputTokens: 8192,
-      thinkingConfig: { thinkingBudget: 4096 },
-      temperature: 0.9,
-      tools: useSearch ? [{ googleSearch: {} }] : []
-    },
+    config: config,
     history: history,
   });
 
@@ -63,62 +71,86 @@ export const sendMessageToSession = async (
   }
 };
 
-export const analyzeImages = async (images: Array<{data: string, mimeType: string}>, prompt: string): Promise<string> => {
-  // Enhanced detection for OCR requests (including specific Tibetan and Chinese keywords)
-  const isOCRRequest = 
-    prompt.toLowerCase().includes("ocr") || 
-    prompt.includes("识别") || 
-    prompt.includes("提取") || 
-    prompt.includes("原文") || 
-    prompt.includes("transcribe") ||
-    prompt.includes("བོད་ཡིག་") ||
-    prompt.includes("ངོ་འཛིན་");
+export const analyzeImages = async (images: Array<{ data: string; mimeType: string }>, prompt: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const isOCRRequest = prompt.toLowerCase().includes("ocr") || prompt.includes("识别") || prompt.includes("提取") || prompt.includes("原文") || prompt.includes("བོད་ཡིག་");
   
-  const imageParts = images.map(img => ({
-    inlineData: { data: img.data, mimeType: img.mimeType }
-  }));
-
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: {
       parts: [
-        ...imageParts,
-        { text: isOCRRequest 
-          ? `CRITICAL TASK: PURE OCR TEXT EXTRACTION.
-             You are acting as a precision OCR engine for Tibetan (བོད་ཡིག) and other scripts.
-             1. EXTRACT ALL TEXT exactly as it appears. 
-             2. DO NOT TRANSLATE. If the text is Tibetan, keep it as Tibetan.
-             3. DO NOT SUMMARIZE.
-             4. DO NOT explain the text. Just output the extracted text.
-             5. MAINTAIN LINE BREAKS and layout logic.
-             6. FULFILL THIS SPECIFIC USER REQUEST: ${prompt}`
-          : `Perform a scholarly analysis of these images.
-             1. OCR TRANSCRIPTION: Extract the text precisely for each image.
-             2. ANALYSIS: Provide context and philological details for the collection.
-             3. TRANSLATION: Only provide if necessary for understanding the analysis.
-             
-             Current User Request: ${prompt}` 
-        }
+        ...images.map(img => ({ inlineData: { data: img.data, mimeType: img.mimeType } })),
+        { text: isOCRRequest ? `PURE OCR: Extract Tibetan/mixed text precisely.` : prompt }
       ]
     },
+    config: { systemInstruction: SYSTEM_INSTRUCTION }
+  });
+  return response.text || "";
+};
+
+export const generateImagesNano = async (prompt: string, size: "1K" | "2K" | "4K" = "1K"): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-image-preview',
+    contents: { parts: [{ text: prompt }] },
     config: {
-      systemInstruction: SYSTEM_INSTRUCTION,
-      maxOutputTokens: 8192,
-      thinkingConfig: { thinkingBudget: 4096 }
+      imageConfig: { aspectRatio: "1:1", imageSize: size }
     }
   });
-  return response.text || "No analysis generated.";
+  
+  const part = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+  if (!part?.inlineData?.data) throw new Error("Image generation failed");
+  return part.inlineData.data;
+};
+
+export const editImageNano = async (base64: string, mimeType: string, prompt: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-image',
+    contents: {
+      parts: [
+        { inlineData: { data: base64, mimeType } },
+        { text: prompt }
+      ]
+    }
+  });
+  const part = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+  if (!part?.inlineData?.data) throw new Error("Image edit failed");
+  return part.inlineData.data;
+};
+
+export const generateVideoVeo = async (prompt: string, imageBase64?: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const config: any = {
+    model: 'veo-3.1-fast-generate-preview',
+    prompt: prompt,
+    config: { numberOfVideos: 1, resolution: '720p', aspectRatio: '16:9' }
+  };
+  
+  if (imageBase64) {
+    config.image = { imageBytes: imageBase64, mimeType: 'image/png' };
+  }
+
+  let operation = await ai.models.generateVideos(config);
+  while (!operation.done) {
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    operation = await ai.operations.getVideosOperation({ operation: operation });
+  }
+
+  const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+  if (!downloadLink) throw new Error("Video generation failed");
+  return `${downloadLink}&key=${process.env.API_KEY}`;
 };
 
 export const generateSpeech = async (text: string): Promise<Uint8Array> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
-    contents: [{ parts: [{ text: `Read this Tibetan/mixed text naturally: ${text}` }] }],
+    contents: [{ parts: [{ text: `Say naturally: ${text}` }] }],
     config: {
-      responseModalalities: [Modality.AUDIO],
-      speechConfig: {
-        voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
-      },
+      // Fix typo in responseModalities
+      responseModalities: [Modality.AUDIO],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
     },
   });
   
@@ -127,19 +159,18 @@ export const generateSpeech = async (text: string): Promise<Uint8Array> => {
   
   const binaryString = atob(base64Audio);
   const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
+  for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
   return bytes;
 };
 
 export const transcribeAudio = async (base64Audio: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: {
       parts: [
         { inlineData: { data: base64Audio, mimeType: 'audio/webm' } },
-        { text: "Transcribe this audio accurately. If it is Tibetan, use Tibetan script. If mixed, use mixed scripts." }
+        { text: "Transcribe accurately." }
       ]
     }
   });
@@ -147,47 +178,59 @@ export const transcribeAudio = async (base64Audio: string): Promise<string> => {
 };
 
 export const analyzeVideo = async (base64Video: string, mimeType: string, prompt: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: {
       parts: [
         { inlineData: { data: base64Video, mimeType } },
-        { text: `Analyze this video for scholarly retrieval: ${prompt}` }
+        { text: `Analyze video: ${prompt}` }
       ]
     },
-    config: {
-        systemInstruction: SYSTEM_INSTRUCTION
-    }
+    config: { systemInstruction: SYSTEM_INSTRUCTION }
   });
   return response.text || "";
 };
 
 export const quickExplain = async (text: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
+    // Use gemini-flash-lite-latest
     model: 'gemini-flash-lite-latest',
-    contents: `Analyze this segment: "${text}". Provide Tibetan commentary, Chinese translation, and English academic context.`,
-    config: {
-      systemInstruction: "You are a master philologist. Be brief but academic.",
-      maxOutputTokens: 1024,
-      temperature: 0.1
-    }
+    contents: `Explain segment: "${text}".`,
+    config: { systemInstruction: "Be brief but academic." }
   });
-  return response.text || "No analysis available.";
+  return response.text || "";
 };
 
-export const translateText = async (text: string, targetLang: 'English' | 'Chinese'): Promise<string> => {
+export const translateText = async (text: string, targetLang: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: `Translate the following scholarly content into ${targetLang}. 
-    Preserve the tone, formatting, and technical terminology. 
-    
-    CONTENT:
-    ${text}`,
+    // Use gemini-flash-lite-latest
+    model: 'gemini-flash-lite-latest',
+    contents: `Translate to ${targetLang}: ${text}`,
+  });
+  return response.text || "";
+};
+
+/**
+ * LIVE API (Conversational Voice)
+ */
+export const connectLiveSession = (callbacks: {
+  onopen: () => void;
+  onmessage: (message: LiveServerMessage) => void;
+  onerror: (e: ErrorEvent) => void;
+  onclose: (e: CloseEvent) => void;
+}) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  return ai.live.connect({
+    model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+    callbacks,
     config: {
-      systemInstruction: "You are a master translator specializing in Tibetan, Chinese, and English academic and philological texts.",
-      maxOutputTokens: 4096,
-      temperature: 0.3
+      // Fix typo in responseModalities
+      responseModalities: [Modality.AUDIO],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
+      systemInstruction: 'You are a helpful Tibetan scholar assistant. Keep responses natural and conversational.',
     }
   });
-  return response.text || "Translation failed.";
 };
