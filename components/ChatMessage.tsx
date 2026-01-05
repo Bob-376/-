@@ -3,7 +3,8 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Message, MediaItem } from '../types';
 import { 
   Bot, User, Copy, Trash2, Clock, ShieldCheck, Check, Volume2, 
-  Loader2, ExternalLink, Languages, Sparkles, X, Info, FileSearch, SearchCode
+  Loader2, ExternalLink, Languages, Sparkles, X, Info, FileSearch, SearchCode,
+  ZoomIn, ZoomOut, Maximize2, Minimize2, RotateCcw
 } from 'lucide-react';
 import { generateSpeech, quickExplain } from '../services/geminiService';
 
@@ -22,7 +23,12 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
   const [selectionRange, setSelectionRange] = useState<{ x: number, y: number, text: string } | null>(null);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [isExplaining, setIsExplaining] = useState(false);
+  
+  // Lightbox States
+  const [previewImage, setPreviewImage] = useState<MediaItem | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
   const contentRef = useRef<HTMLDivElement>(null);
+  const imageContainerRef = useRef<HTMLDivElement>(null);
 
   const countHumanWords = (text: string): number => {
     if (!text) return 0;
@@ -94,6 +100,67 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
     }
   };
 
+  const adjustZoom = (delta: number) => {
+    setZoomLevel(prev => Math.min(5, Math.max(0.5, prev + delta)));
+  };
+
+  // Keyboard and Wheel Support for Lightbox
+  useEffect(() => {
+    if (!previewImage) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const panStep = 60;
+      const container = imageContainerRef.current;
+
+      switch(e.key) {
+        case '+':
+        case '=':
+          e.preventDefault();
+          adjustZoom(0.25);
+          break;
+        case '-':
+        case '_':
+          e.preventDefault();
+          adjustZoom(-0.25);
+          break;
+        case '0':
+          e.preventDefault();
+          setZoomLevel(1);
+          break;
+        case 'Escape':
+          setPreviewImage(null);
+          setZoomLevel(1);
+          break;
+        case 'ArrowUp':
+          if (container) { e.preventDefault(); container.scrollTop -= panStep; }
+          break;
+        case 'ArrowDown':
+          if (container) { e.preventDefault(); container.scrollTop += panStep; }
+          break;
+        case 'ArrowLeft':
+          if (container) { e.preventDefault(); container.scrollLeft -= panStep; }
+          break;
+        case 'ArrowRight':
+          if (container) { e.preventDefault(); container.scrollLeft += panStep; }
+          break;
+      }
+    };
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        adjustZoom(e.deltaY > 0 ? -0.25 : 0.25);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('wheel', handleWheel);
+    };
+  }, [previewImage]);
+
   return (
     <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-4 duration-500 relative group`}>
       <div className={`flex items-start gap-3 max-w-[92%] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -122,18 +189,19 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
           {message.mediaItems && message.mediaItems.length > 0 && (
             <div className={`mb-4 grid gap-2 ${message.mediaItems.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
               {message.mediaItems.map((item, idx) => (
-                <div key={idx} className="overflow-hidden rounded-xl border border-himalaya-gold/20 shadow-lg relative group/media">
+                <div key={idx} className="overflow-hidden rounded-xl border border-himalaya-gold/20 shadow-lg relative group/media cursor-zoom-in">
                    {item.type === 'image' ? (
                      <div className="relative">
                        <img 
                          src={`data:${item.mimeType};base64,${item.data}`} 
                          alt="Attached retrieval artifact" 
-                         className="w-full h-auto max-h-[400px] object-contain bg-gray-50"
+                         className="w-full h-auto max-h-[400px] object-contain bg-gray-50 hover:opacity-95 transition-opacity"
+                         onClick={() => setPreviewImage(item)}
                        />
                        {/* OCR Quick Action Button */}
                        {onOCR && (
                          <button 
-                           onClick={() => onOCR(item)}
+                           onClick={(e) => { e.stopPropagation(); onOCR(item); }}
                            className="absolute top-3 right-3 p-2 bg-white/70 hover:bg-himalaya-red hover:text-white backdrop-blur-md rounded-full text-himalaya-red shadow-lg transition-all opacity-0 group-hover/media:opacity-100 scale-90 group-hover/media:scale-100 flex items-center gap-2"
                            title="Extract Tibetan Original"
                          >
@@ -200,6 +268,86 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
           {isExplaining ? <Loader2 size={16} className="animate-spin" /> : <Languages size={16} />}
           <span className="text-[9px] font-black uppercase tracking-widest overflow-hidden max-w-0 group-hover:max-w-[100px] transition-all duration-300">Quick Lens</span>
         </button>
+      )}
+
+      {/* Image Lightbox / Zoom Overlay */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 z-[600] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in duration-300"
+          onClick={() => { setPreviewImage(null); setZoomLevel(1); }}
+        >
+          <div className="absolute top-6 left-6 z-[610] flex items-center gap-3">
+            <div className="p-2 bg-himalaya-red rounded-xl text-himalaya-gold shadow-2xl">
+              <Sparkles size={20} />
+            </div>
+            <span className="text-[11px] font-black text-white uppercase tracking-[0.2em] shadow-sm">Artifact Lens Viewer</span>
+          </div>
+
+          <button 
+            onClick={() => { setPreviewImage(null); setZoomLevel(1); }}
+            className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-himalaya-red text-white rounded-full transition-all z-[610] hover:scale-110"
+          >
+            <X size={24} />
+          </button>
+
+          {/* Zoom Controls Toolbar */}
+          <div 
+            className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-himalaya-dark/80 backdrop-blur-md border border-white/10 rounded-2xl p-2 flex items-center gap-4 z-[610] shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button onClick={() => adjustZoom(-0.25)} className="p-2 hover:bg-white/10 text-white rounded-xl transition-colors" title="Zoom Out (-)">
+              <ZoomOut size={20} />
+            </button>
+            <div className="w-px h-6 bg-white/10" />
+            <div className="px-2 min-w-[60px] text-center">
+              <span className="text-[10px] font-black text-himalaya-gold uppercase">{Math.round(zoomLevel * 100)}%</span>
+            </div>
+            <div className="w-px h-6 bg-white/10" />
+            <button onClick={() => adjustZoom(0.25)} className="p-2 hover:bg-white/10 text-white rounded-xl transition-colors" title="Zoom In (+)">
+              <ZoomIn size={20} />
+            </button>
+            <div className="w-px h-6 bg-white/10" />
+            <button onClick={() => setZoomLevel(1)} className="p-2 hover:bg-white/10 text-white rounded-xl transition-colors" title="Reset Zoom (0)">
+              <RotateCcw size={18} />
+            </button>
+          </div>
+
+          <div 
+            ref={imageContainerRef}
+            className="relative w-full h-full flex items-center justify-center overflow-auto custom-scrollbar no-scrollbar"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img 
+              src={`data:${previewImage.mimeType};base64,${previewImage.data}`}
+              alt="Preview"
+              className="max-w-none transition-transform duration-200 ease-out shadow-2xl cursor-grab active:cursor-grabbing"
+              style={{ transform: `scale(${zoomLevel})` }}
+              draggable={false}
+              onMouseDown={(e) => {
+                const target = e.currentTarget;
+                let startX = e.clientX;
+                let startY = e.clientY;
+                let scrollLeft = target.parentElement?.scrollLeft || 0;
+                let scrollTop = target.parentElement?.scrollTop || 0;
+
+                const onMouseMove = (moveEvent: MouseEvent) => {
+                  if (target.parentElement) {
+                    target.parentElement.scrollLeft = scrollLeft - (moveEvent.clientX - startX);
+                    target.parentElement.scrollTop = scrollTop - (moveEvent.clientY - startY);
+                  }
+                };
+
+                const onMouseUp = () => {
+                  window.removeEventListener('mousemove', onMouseMove);
+                  window.removeEventListener('mouseup', onMouseUp);
+                };
+
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+              }}
+            />
+          </div>
+        </div>
       )}
 
       {/* Quick Explain Result Modal */}

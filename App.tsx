@@ -66,25 +66,31 @@ const App: React.FC = () => {
   const overlayEditorRef = useRef<HTMLDivElement>(null);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (isMaximized || isDocked) return;
-
-    if (dragging) {
-      setWsPos({ 
-        x: dragging.initialX + (e.clientX - dragging.startX), 
-        y: dragging.initialY + (e.clientY - dragging.startY) 
-      });
-    } else if (resizing) {
-      setWsSize({ 
-        width: Math.max(400, resizing.initialW + (e.clientX - resizing.startX)), 
-        height: Math.max(250, resizing.initialH + (e.clientY - resizing.startY)) 
-      });
-    }
-
+    // 1. Handle overlay dragging (independent of workshop state)
     if (isDraggingOverlay && overlayEditorRef.current) {
       const rect = overlayEditorRef.current.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 100;
       const y = ((e.clientY - rect.top) / rect.height) * 100;
-      setOverlayPos({ x: Math.min(100, Math.max(0, x)), y: Math.min(100, Math.max(0, y)) });
+      setOverlayPos({ 
+        x: Math.min(100, Math.max(0, x)), 
+        y: Math.min(100, Math.max(0, y)) 
+      });
+      return; // Prioritize overlay drag
+    }
+
+    // 2. Handle workshop dragging/resizing (only if not maximized/docked)
+    if (!isMaximized && !isDocked) {
+      if (dragging) {
+        setWsPos({ 
+          x: dragging.initialX + (e.clientX - dragging.startX), 
+          y: dragging.initialY + (e.clientY - dragging.startY) 
+        });
+      } else if (resizing) {
+        setWsSize({ 
+          width: Math.max(400, resizing.initialW + (e.clientX - resizing.startX)), 
+          height: Math.max(250, resizing.initialH + (e.clientY - resizing.startY)) 
+        });
+      }
     }
   }, [dragging, resizing, isMaximized, isDocked, isDraggingOverlay]);
 
@@ -450,7 +456,22 @@ const App: React.FC = () => {
               <div className="flex-1 bg-gray-100 flex items-center justify-center relative p-8">
                 <div ref={overlayEditorRef} className="relative shadow-2xl border-4 border-white max-w-full max-h-full overflow-hidden flex items-center justify-center">
                   <img src={`data:image/jpeg;base64,${imageFiles.find(img => img.id === editingImageId)?.data}`} className="max-w-full max-h-full pointer-events-none" alt="Artifact" />
-                  <div onMouseDown={() => setIsDraggingOverlay(true)} style={{ position: 'absolute', left: `${overlayPos.x}%`, top: `${overlayPos.y}%`, transform: 'translate(-50%, -50%)', fontSize: `${overlayFontSize}px`, color: overlayColor, fontFamily: `"${overlayFont}"`, textShadow: '2px 2px 4px rgba(0,0,0,0.5)', cursor: 'grab' }} className="whitespace-pre font-bold leading-tight select-none">
+                  <div 
+                    onMouseDown={(e) => { e.stopPropagation(); setIsDraggingOverlay(true); }}
+                    onTouchStart={(e) => { e.stopPropagation(); setIsDraggingOverlay(true); }}
+                    style={{ 
+                      position: 'absolute', 
+                      left: `${overlayPos.x}%`, 
+                      top: `${overlayPos.y}%`, 
+                      transform: 'translate(-50%, -50%)', 
+                      fontSize: `${overlayFontSize}px`, 
+                      color: overlayColor, 
+                      fontFamily: `"${overlayFont}"`, 
+                      textShadow: '2px 2px 4px rgba(0,0,0,0.5)', 
+                      cursor: 'grab' 
+                    }} 
+                    className={`whitespace-pre font-bold leading-tight select-none transition-transform duration-75 ${isDraggingOverlay ? 'scale-110 opacity-80 cursor-grabbing' : ''}`}
+                  >
                     {overlayText}
                   </div>
                 </div>
