@@ -398,10 +398,17 @@ const App: React.FC = () => {
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-full max-w-3xl px-4 z-[150] animate-in slide-in-from-bottom-10 duration-500">
           <div className="bg-white/80 backdrop-blur-xl border-2 border-himalaya-gold shadow-2xl rounded-[2rem] p-2 flex items-center gap-2 group">
              <div className="flex items-center gap-1.5 pl-2">
-                <button onClick={isRecording ? () => mediaRecorderRef.current?.stop() : startRecording} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-gray-400 hover:bg-gray-100'}`}>
+                <button 
+                  onClick={isRecording ? () => mediaRecorderRef.current?.stop() : startRecording} 
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-gray-400 hover:bg-gray-100'}`}
+                  title="སྐད་འཇུག་བྱེད་པ། | Voice Input: Transcribe spoken Tibetan into text"
+                >
                    <Mic size={20} />
                 </button>
-                <label className="w-10 h-10 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 cursor-pointer">
+                <label 
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 cursor-pointer"
+                  title="པར་རིས་ཡར་སྤྲོད། | Upload artifacts for image analysis and text extraction"
+                >
                    <ImageIcon size={20} />
                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
                 </label>
@@ -416,11 +423,17 @@ const App: React.FC = () => {
                   <button 
                     onClick={() => handleActionClick("Extract original Tibetan text from the last uploaded image accurately.")}
                     className="w-8 h-8 bg-green-600 text-white rounded-lg flex items-center justify-center hover:bg-green-700 transition-colors shadow-sm"
-                    title="Quick OCR Extraction"
+                    title="བོད་ཡིག་原文提取 | Rapid OCR: Extract Tibetan text from the uploaded artifact"
                   >
                     <SearchCode size={16} />
                   </button>
-                  <button onClick={() => setImageFiles([])} className="text-gray-400 hover:text-red-600"><X size={14} /></button>
+                  <button 
+                    onClick={() => setImageFiles([])} 
+                    className="text-gray-400 hover:text-red-600"
+                    title="པར་རིས་བསུབ་པ། | Clear all uploaded images"
+                  >
+                    <X size={14} />
+                  </button>
                </div>
              )}
 
@@ -434,10 +447,19 @@ const App: React.FC = () => {
                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
              />
              <div className="flex items-center gap-1.5 pr-1">
-                <button onClick={toggleWorkshop} className="w-10 h-10 rounded-full flex items-center justify-center text-himalaya-gold hover:bg-himalaya-gold/10" title="Expand Workshop">
+                <button 
+                  onClick={toggleWorkshop} 
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-himalaya-gold hover:bg-himalaya-gold/10" 
+                  title="ལས་ཁང་སྒོ་འབྱེད་པ། | Expand the research workshop for detailed writing"
+                >
                    <LayoutPanelTop size={20} />
                 </button>
-                <button onClick={() => handleSend()} disabled={(!inputText.trim() && imageFiles.length === 0) || isLoading} className="w-12 h-12 bg-himalaya-red text-himalaya-gold rounded-[1.25rem] flex items-center justify-center shadow-lg active:scale-95 transition-all disabled:opacity-50">
+                <button 
+                  onClick={() => handleSend()} 
+                  disabled={(!inputText.trim() && imageFiles.length === 0) || isLoading} 
+                  className="w-12 h-12 bg-himalaya-red text-himalaya-gold rounded-[1.25rem] flex items-center justify-center shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                  title="བརྡ་འཕྲིན་གཏོང་བ། | Send your manuscript or artifacts for retrieval"
+                >
                    {isLoading ? <Loader2 size={20} className="animate-spin" /> : <SendHorizonal size={22} />}
                 </button>
              </div>
@@ -450,7 +472,13 @@ const App: React.FC = () => {
           <div className="bg-white w-full max-w-5xl h-[85vh] rounded-[3rem] shadow-2xl overflow-hidden flex flex-col border-4 border-himalaya-gold">
             <div className="h-16 bg-himalaya-red flex items-center justify-between px-8">
               <span className="text-[11px] font-black text-himalaya-gold uppercase tracking-widest">Image Philology Workshop</span>
-              <button onClick={() => setEditingImageId(null)} className="text-himalaya-gold hover:text-white"><X size={24} /></button>
+              <button 
+                onClick={() => setEditingImageId(null)} 
+                className="text-himalaya-gold hover:text-white"
+                title="སྒོ་རྒྱག་པ། | Close image editor"
+              >
+                <X size={24} />
+              </button>
             </div>
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
               <div className="flex-1 bg-gray-100 flex items-center justify-center relative p-8">
@@ -471,18 +499,46 @@ const App: React.FC = () => {
                       cursor: 'grab' 
                     }} 
                     className={`whitespace-pre font-bold leading-tight select-none transition-transform duration-75 ${isDraggingOverlay ? 'scale-110 opacity-80 cursor-grabbing' : ''}`}
+                    title="Drag to reposition text overlay"
                   >
                     {overlayText}
                   </div>
                 </div>
               </div>
               <div className="w-full md:w-80 bg-gray-50 border-l p-8 flex flex-col gap-6 overflow-y-auto">
-                <textarea value={overlayText} onChange={(e) => setOverlayText(e.target.value)} className="w-full border rounded-xl p-3 text-sm h-24 font-tibetan" />
-                <input type="range" min="10" max="200" value={overlayFontSize} onChange={(e) => setOverlayFontSize(parseInt(e.target.value))} className="w-full accent-himalaya-red" />
+                <textarea 
+                  value={overlayText} 
+                  onChange={(e) => setOverlayText(e.target.value)} 
+                  className="w-full border rounded-xl p-3 text-sm h-24 font-tibetan"
+                  title="Overlay Text content"
+                />
+                <input 
+                  type="range" 
+                  min="10" 
+                  max="200" 
+                  value={overlayFontSize} 
+                  onChange={(e) => setOverlayFontSize(parseInt(e.target.value))} 
+                  className="w-full accent-himalaya-red" 
+                  title="ཡིག་གཟུགས་ཆེ་ཆུང་། | Text size slider"
+                />
                 <div className="flex flex-wrap gap-2">
-                  {["#FFFFFF", "#000000", "#8B0000", "#D4AF37"].map(c => <button key={c} onClick={() => setOverlayColor(c)} className={`w-8 h-8 rounded-full border-2 ${overlayColor === c ? 'border-himalaya-red scale-110' : 'border-transparent'}`} style={{ backgroundColor: c }} />)}
+                  {["#FFFFFF", "#000000", "#8B0000", "#D4AF37"].map(c => (
+                    <button 
+                      key={c} 
+                      onClick={() => setOverlayColor(c)} 
+                      className={`w-8 h-8 rounded-full border-2 ${overlayColor === c ? 'border-himalaya-red scale-110' : 'border-transparent'}`} 
+                      style={{ backgroundColor: c }} 
+                      title={`Select color: ${c}`}
+                    />
+                  ))}
                 </div>
-                <button onClick={applyTextOverlay} className="mt-auto w-full bg-himalaya-red text-himalaya-gold py-4 rounded-2xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all">Save Changes</button>
+                <button 
+                  onClick={applyTextOverlay} 
+                  className="mt-auto w-full bg-himalaya-red text-himalaya-gold py-4 rounded-2xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all"
+                  title="Apply changes and save overlay to image"
+                >
+                  Save Changes
+                </button>
               </div>
             </div>
           </div>
@@ -503,23 +559,43 @@ const App: React.FC = () => {
             </div>
             <div className="flex items-center gap-2">
               {/* Font Size Controls */}
-              <div className="flex items-center bg-white border border-gray-200 rounded-full p-0.5 shadow-sm mr-2">
-                <button onClick={() => changeFontSize(-2)} className="p-1 text-gray-400 hover:text-himalaya-red transition-colors"><Minus size={14} /></button>
+              <div className="flex items-center bg-white border border-gray-200 rounded-full p-0.5 shadow-sm mr-2" title="ཡིག་གཟུགས་ཆེ་ཆུང་སྒྲིག་པ། | Adjust font size for writing">
+                <button onClick={() => changeFontSize(-2)} className="p-1 text-gray-400 hover:text-himalaya-red transition-colors" title="ཆུང་དུ་གཏོང་བ། | Decrease size"><Minus size={14} /></button>
                 <div className="px-2 flex items-center gap-1 border-x border-gray-100 min-w-[48px] justify-center">
                   <span className="text-[10px] font-black tabular-nums">{fontSize}</span>
                   <span className="text-[7px] font-bold text-gray-300 uppercase">px</span>
                 </div>
-                <button onClick={() => changeFontSize(2)} className="p-1 text-gray-400 hover:text-himalaya-red transition-colors"><Plus size={14} /></button>
+                <button onClick={() => changeFontSize(2)} className="p-1 text-gray-400 hover:text-himalaya-red transition-colors" title="ཆེ་རུ་གཏོང་བ། | Increase size"><Plus size={14} /></button>
               </div>
 
-              <button onClick={() => setIsDocked(!isDocked)} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[8px] font-black uppercase transition-all ${isDocked ? 'bg-himalaya-red text-white' : 'bg-gray-200 text-gray-500'}`}>
+              <button 
+                onClick={() => setIsDocked(!isDocked)} 
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[8px] font-black uppercase transition-all ${isDocked ? 'bg-himalaya-red text-white' : 'bg-gray-200 text-gray-500'}`}
+                title="སྒེའུ་ཁུང་གི་གནས་བབ། | Switch between docked and floating workshop modes"
+              >
                 {isDocked ? 'Docked' : 'Float'}
               </button>
-              <button onClick={() => setUseSearch(!useSearch)} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[8px] font-black uppercase transition-all ${useSearch ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-200 text-gray-500'}`}>
+              <button 
+                onClick={() => setUseSearch(!useSearch)} 
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[8px] font-black uppercase transition-all ${useSearch ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-200 text-gray-500'}`}
+                title="དྲ་བའི་བཙལ་འཚོལ། | Enable or disable real-time Google Search grounding"
+              >
                 <Globe size={10} /> Search {useSearch ? 'ON' : 'OFF'}
               </button>
-              <button onClick={() => setIsMaximized(!isMaximized)} className="text-gray-400 hover:text-himalaya-red ml-1">{isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
-              <button onClick={toggleWorkshop} className="p-1 text-gray-400 hover:text-red-600"><X size={16} /></button>
+              <button 
+                onClick={() => setIsMaximized(!isMaximized)} 
+                className="text-gray-400 hover:text-himalaya-red ml-1"
+                title={isMaximized ? "སྒེའུ་ཁུང་ཆུང་དུ་གཏོང་བ། | Restore window size" : "སྒེའུ་ཁུང་ཆེ་རུ་གཏོང་བ། | Maximize window to full screen"}
+              >
+                {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              </button>
+              <button 
+                onClick={toggleWorkshop} 
+                className="p-1 text-gray-400 hover:text-red-600"
+                title="སྒོ་རྒྱག་པ། | Close workshop"
+              >
+                <X size={16} />
+              </button>
             </div>
           </div>
 
@@ -538,19 +614,41 @@ const App: React.FC = () => {
                 <div className="flex items-center justify-between mb-2 px-2">
                   <div className="flex items-center gap-2">
                     <span className="text-[8px] font-black text-himalaya-gold uppercase bg-himalaya-red px-1.5 py-0.5 rounded">Artifacts</span>
-                    <button onClick={() => handleActionClick("Extract all Tibetan text from these images accurately.")} className="flex items-center gap-1 px-2 py-0.5 bg-white border border-himalaya-gold/30 rounded-full text-[9px] font-bold text-himalaya-red hover:bg-himalaya-gold/10">
+                    <button 
+                      onClick={() => handleActionClick("Extract all Tibetan text from these images accurately.")} 
+                      className="flex items-center gap-1 px-2 py-0.5 bg-white border border-himalaya-gold/30 rounded-full text-[9px] font-bold text-himalaya-red hover:bg-himalaya-gold/10"
+                      title="བོད་ཡིག་原文 | Extract original Tibetan text from all attached images"
+                    >
                       <SearchCode size={10} /> བོད་ཡིག་原文
                     </button>
                   </div>
-                  <button onClick={() => setImageFiles([])} className="text-[8px] font-black uppercase text-red-600">Clear</button>
+                  <button 
+                    onClick={() => setImageFiles([])} 
+                    className="text-[8px] font-black uppercase text-red-600"
+                    title="Clear artifacts"
+                  >
+                    Clear
+                  </button>
                 </div>
                 <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
                   {imageFiles.map((file) => (
                     <div key={file.id} className="w-14 h-14 bg-himalaya-gold/10 border border-himalaya-gold/30 rounded-lg overflow-hidden group relative shrink-0">
                       <img src={`data:image/jpeg;base64,${file.data}`} className="w-full h-full object-cover" alt="Thumb" />
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1.5">
-                        <button onClick={() => setEditingImageId(file.id)} className="text-himalaya-gold hover:scale-110"><TypeIcon size={12} /></button>
-                        <button onClick={() => setImageFiles(p => p.filter(i => i.id !== file.id))} className="text-white hover:scale-110"><X size={12} /></button>
+                        <button 
+                          onClick={() => setEditingImageId(file.id)} 
+                          className="text-himalaya-gold hover:scale-110"
+                          title="Edit text overlay"
+                        >
+                          <TypeIcon size={12} />
+                        </button>
+                        <button 
+                          onClick={() => setImageFiles(p => p.filter(i => i.id !== file.id))} 
+                          className="text-white hover:scale-110"
+                          title="Remove image"
+                        >
+                          <X size={12} />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -560,15 +658,38 @@ const App: React.FC = () => {
 
             <div className="h-20 shrink-0 border-t border-gray-200 px-8 flex items-center justify-between bg-white shadow-[0_-4px_12px_rgba(0,0,0,0.03)]">
               <div className="flex items-center gap-3">
-                <button onClick={isRecording ? () => mediaRecorderRef.current?.stop() : startRecording} className={`w-11 h-11 rounded-full flex items-center justify-center shadow-md transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-gray-400'}`}><Mic size={20} /></button>
+                <button 
+                  onClick={isRecording ? () => mediaRecorderRef.current?.stop() : startRecording} 
+                  className={`w-11 h-11 rounded-full flex items-center justify-center shadow-md transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-gray-400'}`}
+                  title="སྐད་འཇུག་བྱེད་པ། | Voice Input"
+                >
+                  <Mic size={20} />
+                </button>
                 <div className="flex items-center bg-gray-50 border border-gray-100 rounded-full p-1">
-                  <label className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-himalaya-gold cursor-pointer"><ImageIcon size={20} /><input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} /></label>
+                  <label 
+                    className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-himalaya-gold cursor-pointer"
+                    title="པར་རིས་ཡར་སྤྲོད། | Upload Image"
+                  >
+                    <ImageIcon size={20} />
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
+                  </label>
                   <div className="w-px h-5 bg-gray-200 mx-0.5" />
-                  <button onClick={startCamera} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-himalaya-red"><Camera size={20} /></button>
+                  <button 
+                    onClick={startCamera} 
+                    className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-himalaya-red"
+                    title="པར་རྒྱག་པ། | Open Camera"
+                  >
+                    <Camera size={20} />
+                  </button>
                 </div>
                 {mediaLoading && <Loader2 className="animate-spin text-himalaya-gold" size={20} />}
               </div>
-              <button onClick={() => handleSend()} disabled={isLoading} className="flex items-center gap-2.5 px-8 py-2.5 rounded-xl font-black bg-himalaya-red text-himalaya-gold shadow-lg active:scale-95 transition-all disabled:opacity-50">
+              <button 
+                onClick={() => handleSend()} 
+                disabled={isLoading} 
+                className="flex items-center gap-2.5 px-8 py-2.5 rounded-xl font-black bg-himalaya-red text-himalaya-gold shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                title="བརྡ་འཕྲིན་གཏོང་བ། | Send for scholary analysis"
+              >
                 {isLoading ? <Loader2 className="animate-spin" size={18} /> : <Compass size={18} />}
                 <span className="text-[10px] uppercase tracking-widest">Process Content</span>
               </button>
@@ -581,7 +702,20 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[500] bg-black flex flex-col items-center justify-center">
           {cameraError ? <div className="text-white p-10 text-center"><AlertCircle size={40} className="mx-auto mb-4" /><p>{cameraError}</p><button onClick={() => setShowCamera(false)} className="mt-6 px-8 py-2 bg-white text-black rounded-full">Close</button></div> : 
           <><video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-          <div className="absolute bottom-10 flex gap-6"><button onClick={capturePhoto} className="w-20 h-20 rounded-full bg-white border-8 border-himalaya-gold shadow-2xl active:scale-90 transition-transform" /><button onClick={() => setShowCamera(false)} className="w-20 h-20 rounded-full bg-red-600 text-white flex items-center justify-center"><X size={40} /></button></div></>}
+          <div className="absolute bottom-10 flex gap-6">
+            <button 
+              onClick={capturePhoto} 
+              className="w-20 h-20 rounded-full bg-white border-8 border-himalaya-gold shadow-2xl active:scale-90 transition-transform" 
+              title="པར་རྒྱག་པ། | Take Photo"
+            />
+            <button 
+              onClick={() => setShowCamera(false)} 
+              className="w-20 h-20 rounded-full bg-red-600 text-white flex items-center justify-center"
+              title="སྒོ་རྒྱག་པ། | Close Camera"
+            >
+              <X size={40} />
+            </button>
+          </div></>}
         </div>
       )}
     </div>

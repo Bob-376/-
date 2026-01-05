@@ -4,9 +4,9 @@ import { Message, MediaItem } from '../types';
 import { 
   Bot, User, Copy, Trash2, Clock, ShieldCheck, Check, Volume2, 
   Loader2, ExternalLink, Languages, Sparkles, X, Info, FileSearch, SearchCode,
-  ZoomIn, ZoomOut, Maximize2, Minimize2, RotateCcw
+  ZoomIn, ZoomOut, Maximize2, Minimize2, RotateCcw, ChevronDown, MousePointer2
 } from 'lucide-react';
-import { generateSpeech, quickExplain } from '../services/geminiService';
+import { generateSpeech, quickExplain, translateText } from '../services/geminiService';
 
 interface ChatMessageProps {
   message: Message;
@@ -19,11 +19,18 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
   const [copied, setCopied] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   
-  // Selection States
+  // Selection & UI States
   const [selectionRange, setSelectionRange] = useState<{ x: number, y: number, text: string } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, text: string } | null>(null);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [isExplaining, setIsExplaining] = useState(false);
   
+  // Translation States
+  const [translation, setTranslation] = useState<string | null>(null);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [showTranslateMenu, setShowTranslateMenu] = useState(false);
+  const [activeTranslateLang, setActiveTranslateLang] = useState<'English' | 'Chinese' | null>(null);
+
   // Lightbox States
   const [previewImage, setPreviewImage] = useState<MediaItem | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -87,11 +94,30 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
     }
   };
 
-  const runQuickExplain = async () => {
-    if (!selectionRange) return;
+  const handleContextMenu = (e: React.MouseEvent) => {
+    const selection = window.getSelection();
+    const selectedText = selection?.toString().trim();
+    
+    if (selectedText) {
+      e.preventDefault();
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        text: selectedText
+      });
+    }
+  };
+
+  const runQuickExplain = async (textToExplain?: string) => {
+    const targetText = textToExplain || selectionRange?.text || contextMenu?.text;
+    if (!targetText) return;
+    
+    setContextMenu(null);
+    setSelectionRange(null);
     setIsExplaining(true);
+    
     try {
-      const result = await quickExplain(selectionRange.text);
+      const result = await quickExplain(targetText);
       setExplanation(result);
     } catch (err) {
       setExplanation("Analysis failed. Please try again.");
@@ -100,11 +126,47 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
     }
   };
 
+  const handleTranslate = async (lang: 'English' | 'Chinese') => {
+    setShowTranslateMenu(false);
+    if (activeTranslateLang === lang && translation) {
+      setTranslation(null);
+      setActiveTranslateLang(null);
+      return;
+    }
+    
+    setIsTranslating(true);
+    try {
+      const result = await translateText(message.text, lang);
+      setTranslation(result);
+      setActiveTranslateLang(lang);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
   const adjustZoom = (delta: number) => {
     setZoomLevel(prev => Math.min(5, Math.max(0.5, prev + delta)));
   };
 
-  // Keyboard and Wheel Support for Lightbox
+  // Keyboard, Wheel, and Global Click Handlers
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setContextMenu(null);
+    };
+
+    if (contextMenu) {
+      window.addEventListener('click', handleClickOutside);
+      window.addEventListener('scroll', handleClickOutside, true);
+    }
+
+    return () => {
+      window.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('scroll', handleClickOutside, true);
+    };
+  }, [contextMenu]);
+
   useEffect(() => {
     if (!previewImage) return;
 
@@ -172,15 +234,42 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
           <div className="flex justify-between items-center mb-4 opacity-30">
             <span className="text-[7px] font-black uppercase tracking-widest">{isUser ? 'User Manuscript' : 'System Record'}</span>
             <div className="flex items-center gap-3">
+              <div className="relative">
+                <button 
+                  onClick={() => setShowTranslateMenu(!showTranslateMenu)}
+                  className={`transition-colors ${isTranslating ? 'text-himalaya-red' : 'text-gray-400 hover:text-himalaya-red'}`}
+                  title="ཡིག་སྒྱུར། | Translate scholarly content"
+                >
+                  {isTranslating ? <Loader2 size={12} className="animate-spin" /> : <Languages size={12} />}
+                </button>
+                {showTranslateMenu && (
+                  <div className="absolute right-0 top-full mt-2 bg-white border border-gray-100 shadow-2xl rounded-xl p-1 z-50 flex flex-col min-w-[100px] animate-in fade-in zoom-in-95">
+                    <button onClick={() => handleTranslate('English')} className="px-3 py-1.5 text-[10px] font-black uppercase text-gray-600 hover:bg-gray-50 hover:text-himalaya-red rounded-lg text-left">English</button>
+                    <button onClick={() => handleTranslate('Chinese')} className="px-3 py-1.5 text-[10px] font-black uppercase text-gray-600 hover:bg-gray-50 hover:text-himalaya-red rounded-lg text-left">Chinese</button>
+                  </div>
+                )}
+              </div>
               {!isUser && (
-                <button onClick={handlePlayAudio} className={`transition-colors ${isPlaying ? 'text-himalaya-red animate-pulse' : 'text-gray-400 hover:text-himalaya-red'}`}>
+                <button 
+                  onClick={handlePlayAudio} 
+                  className={`transition-colors ${isPlaying ? 'text-himalaya-red animate-pulse' : 'text-gray-400 hover:text-himalaya-red'}`}
+                  title="སྒྲ་ཀློག་པ། | Listen: Convert Tibetan text to natural audio speech"
+                >
                   {isPlaying ? <Loader2 size={12} className="animate-spin" /> : <Volume2 size={12} />}
                 </button>
               )}
-              <button onClick={handleCopy} className={`transition-colors ${copied ? 'text-green-600' : 'text-gray-400 hover:text-himalaya-red'}`}>
+              <button 
+                onClick={handleCopy} 
+                className={`transition-colors ${copied ? 'text-green-600' : 'text-gray-400 hover:text-himalaya-red'}`}
+                title="འདྲ་བཤུས་བྱེད་པ། | Copy this message to your clipboard"
+              >
                 {copied ? <Check size={12} /> : <Copy size={12} />}
               </button>
-              <button onClick={() => onDelete?.(message.id)} className="text-gray-400 hover:text-red-600">
+              <button 
+                onClick={() => onDelete?.(message.id)} 
+                className="text-gray-400 hover:text-red-600"
+                title="བསུབ་པ། | Delete this message from the current session"
+              >
                 <Trash2 size={12} />
               </button>
             </div>
@@ -189,7 +278,7 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
           {message.mediaItems && message.mediaItems.length > 0 && (
             <div className={`mb-4 grid gap-2 ${message.mediaItems.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
               {message.mediaItems.map((item, idx) => (
-                <div key={idx} className="overflow-hidden rounded-xl border border-himalaya-gold/20 shadow-lg relative group/media cursor-zoom-in">
+                <div key={idx} className="overflow-hidden rounded-xl border border-himalaya-gold/20 shadow-lg relative group/media cursor-zoom-in" title="Preview image in full-screen lens">
                    {item.type === 'image' ? (
                      <div className="relative">
                        <img 
@@ -203,7 +292,7 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
                          <button 
                            onClick={(e) => { e.stopPropagation(); onOCR(item); }}
                            className="absolute top-3 right-3 p-2 bg-white/70 hover:bg-himalaya-red hover:text-white backdrop-blur-md rounded-full text-himalaya-red shadow-lg transition-all opacity-0 group-hover/media:opacity-100 scale-90 group-hover/media:scale-100 flex items-center gap-2"
-                           title="Extract Tibetan Original"
+                           title="བོད་ཡིག་原文提取 | Extract original Tibetan script using philological OCR"
                          >
                            <SearchCode size={16} />
                            <span className="text-[10px] font-black uppercase pr-1">བོད་ཡིག་原文</span>
@@ -226,17 +315,32 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
           <div 
             ref={contentRef}
             onMouseUp={handleMouseUp}
+            onContextMenu={handleContextMenu}
             className="message-content text-himalaya-dark whitespace-pre-wrap leading-[1.8] font-tibetan text-[1.2rem] selection:bg-himalaya-gold/30"
           >
             {message.text.replace(/\[CONTINUE_SIGNAL\]|\[COMPLETE\]/g, "")}
           </div>
+
+          {translation && (
+            <div className="mt-6 pt-6 border-t border-himalaya-gold/10 animate-in slide-in-from-top-2 duration-300">
+               <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[8px] font-black uppercase bg-himalaya-gold/20 text-himalaya-red px-2 py-0.5 rounded-full tracking-widest">
+                    Translation ({activeTranslateLang})
+                  </span>
+                  <button onClick={() => setTranslation(null)} className="text-gray-300 hover:text-red-500"><X size={10} /></button>
+               </div>
+               <div className={`whitespace-pre-wrap leading-relaxed ${activeTranslateLang === 'Chinese' ? 'font-sans text-[1.1rem]' : 'font-serif text-[1rem]'} text-gray-700 italic`}>
+                 {translation}
+               </div>
+            </div>
+          )}
 
           {message.groundingChunks && (
             <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
               <span className="text-[8px] font-black uppercase text-gray-400 tracking-widest">Sources & Citations</span>
               <div className="flex flex-wrap gap-2">
                 {message.groundingChunks.map((chunk, idx) => chunk.web && (
-                  <a key={idx} href={chunk.web.uri} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 rounded-md text-[9px] text-blue-600 hover:bg-blue-50 transition-colors">
+                  <a key={idx} href={chunk.web.uri} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 rounded-md text-[9px] text-blue-600 hover:bg-blue-50 transition-colors" title={`ཕྱི་འབྲེལ་དྲ་ཚིག | Open source: ${chunk.web.title}`}>
                     <ExternalLink size={10} />
                     {chunk.web.title}
                   </a>
@@ -247,7 +351,7 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
           
           {!isUser && !message.isStreaming && (
             <div className="flex flex-col items-center pt-6 mt-6 border-t border-gray-100 gap-2">
-               <div className="flex items-center gap-2 px-4 py-1.5 bg-himalaya-red text-himalaya-gold rounded-full border border-himalaya-gold/40 shadow-md">
+               <div className="flex items-center gap-2 px-4 py-1.5 bg-himalaya-red text-himalaya-gold rounded-full border border-himalaya-gold/40 shadow-md" title="Verification of scholarly content generation">
                   <ShieldCheck size={12} />
                   <span className="text-[9px] font-black uppercase tracking-widest">Master Scribe Authorized</span>
                   <div className="w-px h-3 bg-himalaya-gold/30 mx-0.5" />
@@ -258,16 +362,50 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
         </div>
       </div>
 
-      {/* Floating Action Trigger */}
-      {selectionRange && !explanation && (
+      {/* Floating Action Trigger (Selection Button) */}
+      {selectionRange && !explanation && !contextMenu && (
         <button
-          onClick={runQuickExplain}
+          onClick={() => runQuickExplain()}
           style={{ position: 'fixed', left: selectionRange.x, top: selectionRange.y, transform: 'translate(-50%, -100%)' }}
           className="z-[300] bg-himalaya-gold text-himalaya-red p-2.5 rounded-full shadow-2xl border border-himalaya-red/20 animate-in zoom-in slide-in-from-bottom-2 duration-200 hover:scale-110 active:scale-95 flex items-center gap-2 group"
+          title="ཤེས་རིག་གནད་བསྡུས། | Philologist's Lens: Analyze the selected text segment"
         >
           {isExplaining ? <Loader2 size={16} className="animate-spin" /> : <Languages size={16} />}
           <span className="text-[9px] font-black uppercase tracking-widest overflow-hidden max-w-0 group-hover:max-w-[100px] transition-all duration-300">Quick Lens</span>
         </button>
+      )}
+
+      {/* Custom Context Menu */}
+      {contextMenu && (
+        <div 
+          style={{ position: 'fixed', left: contextMenu.x, top: contextMenu.y }}
+          className="z-[500] bg-himalaya-dark/95 backdrop-blur-md border border-himalaya-gold/50 rounded-2xl shadow-2xl p-1.5 min-w-[220px] animate-in fade-in zoom-in-95 duration-150"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button 
+            onClick={() => runQuickExplain()}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-himalaya-gold/20 text-himalaya-gold rounded-xl transition-all group"
+          >
+            <Sparkles size={16} className="group-hover:scale-125 transition-transform" />
+            <div className="flex flex-col items-start">
+              <span className="font-tibetan text-sm leading-none mb-0.5">ཤེས་རིག་གནད་བསྡུས།</span>
+              <span className="text-[8px] font-black uppercase tracking-widest opacity-60">Philologist's Lens</span>
+            </div>
+          </button>
+          
+          <div className="h-px bg-himalaya-gold/10 my-1 mx-2" />
+          
+          <button 
+            onClick={() => { handleCopy(); setContextMenu(null); }}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 text-white/70 hover:text-white rounded-xl transition-all"
+          >
+            <Copy size={16} />
+            <div className="flex flex-col items-start">
+              <span className="font-tibetan text-sm leading-none mb-0.5">འདྲ་བཤུས་བྱེད་པ།</span>
+              <span className="text-[8px] font-black uppercase tracking-widest opacity-60">Copy Selection</span>
+            </div>
+          </button>
+        </div>
       )}
 
       {/* Image Lightbox / Zoom Overlay */}
@@ -286,6 +424,7 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
           <button 
             onClick={() => { setPreviewImage(null); setZoomLevel(1); }}
             className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-himalaya-red text-white rounded-full transition-all z-[610] hover:scale-110"
+            title="སྒོ་རྒྱག་པ། | Close viewer (Esc)"
           >
             <X size={24} />
           </button>
@@ -295,19 +434,31 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
             className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-himalaya-dark/80 backdrop-blur-md border border-white/10 rounded-2xl p-2 flex items-center gap-4 z-[610] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <button onClick={() => adjustZoom(-0.25)} className="p-2 hover:bg-white/10 text-white rounded-xl transition-colors" title="Zoom Out (-)">
+            <button 
+              onClick={() => adjustZoom(-0.25)} 
+              className="p-2 hover:bg-white/10 text-white rounded-xl transition-colors" 
+              title="ཆུང་དུ་གཏོང་བ། | Zoom Out (-)"
+            >
               <ZoomOut size={20} />
             </button>
             <div className="w-px h-6 bg-white/10" />
-            <div className="px-2 min-w-[60px] text-center">
+            <div className="px-2 min-w-[60px] text-center" title="Current zoom level">
               <span className="text-[10px] font-black text-himalaya-gold uppercase">{Math.round(zoomLevel * 100)}%</span>
             </div>
             <div className="w-px h-6 bg-white/10" />
-            <button onClick={() => adjustZoom(0.25)} className="p-2 hover:bg-white/10 text-white rounded-xl transition-colors" title="Zoom In (+)">
+            <button 
+              onClick={() => adjustZoom(0.25)} 
+              className="p-2 hover:bg-white/10 text-white rounded-xl transition-colors" 
+              title="ཆེ་རུ་གཏོང་བ། | Zoom In (+)"
+            >
               <ZoomIn size={20} />
             </button>
             <div className="w-px h-6 bg-white/10" />
-            <button onClick={() => setZoomLevel(1)} className="p-2 hover:bg-white/10 text-white rounded-xl transition-colors" title="Reset Zoom (0)">
+            <button 
+              onClick={() => setZoomLevel(1)} 
+              className="p-2 hover:bg-white/10 text-white rounded-xl transition-colors" 
+              title="བསྐྱར་སྒྲིག | Reset Zoom (0)"
+            >
               <RotateCcw size={18} />
             </button>
           </div>
@@ -361,7 +512,11 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
                 </div>
                 <span className="text-[10px] font-bold text-himalaya-gold uppercase tracking-widest font-tibetan">ཤེས་རིག་གནད་བསྡུས། (Philologist's Lens)</span>
               </div>
-              <button onClick={() => { setExplanation(null); setSelectionRange(null); }} className="text-himalaya-gold/60 hover:text-himalaya-gold">
+              <button 
+                onClick={() => { setExplanation(null); setSelectionRange(null); }} 
+                className="text-himalaya-gold/60 hover:text-himalaya-gold"
+                title="སྒོ་རྒྱག་པ། | Close analysis window"
+              >
                 <X size={20} />
               </button>
             </div>
@@ -369,7 +524,7 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
             <div className="p-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
               <div className="mb-6 p-4 bg-gray-50 rounded-2xl border border-gray-100">
                  <span className="text-[8px] font-black text-gray-400 uppercase block mb-1">Selected Passage</span>
-                 <p className="font-tibetan text-lg text-himalaya-dark leading-relaxed">"{selectionRange?.text}"</p>
+                 <p className="font-tibetan text-lg text-himalaya-dark leading-relaxed">"{selectionRange?.text || contextMenu?.text}"</p>
               </div>
 
               {isExplaining ? (

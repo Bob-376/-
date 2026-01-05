@@ -163,7 +163,6 @@ export const analyzeVideo = async (base64Video: string, mimeType: string, prompt
 };
 
 export const quickExplain = async (text: string): Promise<string> => {
-  // Use correct model name 'gemini-flash-lite-latest' as per guidelines.
   const response = await ai.models.generateContent({
     model: 'gemini-flash-lite-latest',
     contents: `Analyze this segment: "${text}". Provide Tibetan commentary, Chinese translation, and English academic context.`,
@@ -174,4 +173,21 @@ export const quickExplain = async (text: string): Promise<string> => {
     }
   });
   return response.text || "No analysis available.";
+};
+
+export const translateText = async (text: string, targetLang: 'English' | 'Chinese'): Promise<string> => {
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Translate the following scholarly content into ${targetLang}. 
+    Preserve the tone, formatting, and technical terminology. 
+    
+    CONTENT:
+    ${text}`,
+    config: {
+      systemInstruction: "You are a master translator specializing in Tibetan, Chinese, and English academic and philological texts.",
+      maxOutputTokens: 4096,
+      temperature: 0.3
+    }
+  });
+  return response.text || "Translation failed.";
 };

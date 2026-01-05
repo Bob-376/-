@@ -98,7 +98,7 @@ const Header: React.FC<HeaderProps> = ({
     <header className="bg-himalaya-red text-himalaya-cream p-3 shadow-xl border-b-4 border-himalaya-gold sticky top-0 z-[100]">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 px-2">
         
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-3 shrink-0" title="ཤེས་རིག་བཙལ་བཤེར་མ་ལག | Intelligent Retrieval System">
           <div className="w-10 h-10 rounded-lg bg-himalaya-gold flex items-center justify-center shadow-lg">
              <Search className="text-himalaya-red w-6 h-6" />
           </div>
@@ -112,7 +112,7 @@ const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-4 bg-black/20 px-4 py-1.5 rounded-xl border border-white/5 shadow-inner flex-1 max-w-md">
+        <div className="flex items-center gap-4 bg-black/20 px-4 py-1.5 rounded-xl border border-white/5 shadow-inner flex-1 max-w-md" title="ཡིག་གྲངས་ཀྱི་གྲུབ་འབྲས། | Progress toward the 50K human-word scholarly goal">
           <div className="flex flex-col items-start min-w-[90px]">
             <div className="flex items-baseline gap-1">
               <span className="text-lg font-black text-himalaya-gold leading-none tabular-nums">{totalCharacters.toLocaleString()}</span>
@@ -146,13 +146,25 @@ const Header: React.FC<HeaderProps> = ({
                </div>
              </div>
              <div className="flex items-center gap-0.5 border-l border-white/10 pl-1.5">
-               <button onClick={toggleTimer} className={`p-1 transition-colors ${isActive ? 'text-himalaya-gold' : 'text-white/60 hover:text-white'}`}>
+               <button 
+                onClick={toggleTimer} 
+                className={`p-1 transition-colors ${isActive ? 'text-himalaya-gold' : 'text-white/60 hover:text-white'}`}
+                title="དུས་ཚོད་འགོ་འཛུགས་དང་མཚམས་འཇོག | Start or pause the focus timer"
+               >
                  {isActive ? <Pause size={14} /> : <Play size={14} fill="currentColor" />}
                </button>
-               <button onClick={switchMode} className="p-1 text-white/60 hover:text-himalaya-gold transition-colors" title="Switch Mode">
+               <button 
+                onClick={switchMode} 
+                className="p-1 text-white/60 hover:text-himalaya-gold transition-colors" 
+                title="ལས་ཀ་དང་ངལ་གསོའི་རྣམ་པ། | Switch between deep work and rest mode"
+               >
                  {mode === 'work' ? <Coffee size={14} /> : <Pen size={14} />}
                </button>
-               <button onClick={resetTimer} className="p-1 text-white/40 hover:text-white transition-colors" title="Reset Timer">
+               <button 
+                onClick={resetTimer} 
+                className="p-1 text-white/40 hover:text-white transition-colors" 
+                title="དུས་ཚོད་བསྐྱར་སྒྲིག | Reset the session timer to 60:00"
+               >
                  <RotateCcw size={12} />
                </button>
              </div>
@@ -164,7 +176,7 @@ const Header: React.FC<HeaderProps> = ({
             <button 
               onClick={onToggleInput}
               className={`p-2 rounded-lg flex items-center gap-1.5 transition-all ${isInputVisible ? 'bg-himalaya-gold text-himalaya-red shadow-lg' : 'bg-white/5 text-white/40 hover:text-white'}`}
-              title="Toggle Input Workshop (བརྡ་འཕྲིན་འཇུག་སྣོད།)"
+              title="བརྡ་འཕྲིན་འཇུག་སྣོད། | Open the full-screen writing and research workshop"
             >
               <Edit3 size={16} />
               <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">Input</span>
@@ -172,24 +184,40 @@ const Header: React.FC<HeaderProps> = ({
             <button 
               onClick={onToggleAutoScroll} 
               className={`p-2 rounded-lg flex items-center gap-1.5 transition-all ${autoScrollEnabled ? 'bg-white/10 text-himalaya-gold' : 'bg-white/5 text-white/40 hover:text-white'}`} 
-              title={autoScrollEnabled ? "Disable Auto-Scroll" : "Enable Auto-Scroll"}
+              title={autoScrollEnabled ? "རང་འགུལ་འདེད་པ་མཚམས་འཇོག | Disable auto-scroll to bottom" : "རང་འགུལ་འདེད་པ་འགོ་འཛུགས། | Enable auto-scroll as messages arrive"}
             >
               <ArrowDownToLine size={16} className={autoScrollEnabled ? 'animate-bounce' : ''} />
               <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">Scroll</span>
             </button>
-            <button onClick={onResetLayout} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5 group" title="Reset Layout">
+            <button 
+              onClick={onResetLayout} 
+              className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5 group" 
+              title="བཀོད་པ་བསྐྱར་སྒྲིག | Restore workshop to its default position and size"
+            >
               <LayoutIcon size={16} />
               <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">Layout</span>
             </button>
-            <button onClick={onExport} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5" title="Export Chat History">
+            <button 
+              onClick={onExport} 
+              className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5" 
+              title="ལོ་རྒྱུས་ཕྱིར་འདྲེན། | Save the entire conversation as a text file for your records"
+            >
               <Download size={16} />
               <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">Export</span>
             </button>
-            <button onClick={onToggleMemory} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5" title="Intelligence Memory">
+            <button 
+              onClick={onToggleMemory} 
+              className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10 flex items-center gap-1.5" 
+              title="ཤེས་རིག་གཏེར་མཛོད། | Access persistent project memory and cross-reference citations"
+            >
               <BrainCircuit size={16} />
               <span className="hidden lg:inline text-[9px] font-bold uppercase tracking-widest">Memory</span>
             </button>
-            <button onClick={onReset} className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10" title="Clear Context">
+            <button 
+              onClick={onReset} 
+              className="p-2 bg-white/5 rounded-lg text-himalaya-gold hover:bg-white/10" 
+              title="གཏམ་གླིང་གསར་པ། | Clear all current messages and start a fresh retrieval session"
+            >
               <RefreshCcw size={16} />
             </button>
           </nav>
