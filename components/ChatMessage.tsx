@@ -5,7 +5,7 @@ import {
   Bot, User, Copy, Trash2, Clock, ShieldCheck, Check, Volume2, 
   Loader2, ExternalLink, Languages, Sparkles, X, Info, FileSearch, SearchCode,
   ZoomIn, ZoomOut, Maximize2, Minimize2, RotateCcw, ChevronDown, MousePointer2,
-  Film, Wand2, Edit
+  Film, Wand2, Edit, Search
 } from 'lucide-react';
 import { generateSpeech, quickExplain, translateText } from '../services/geminiService';
 
@@ -24,11 +24,13 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
   const [editPrompt, setEditPrompt] = useState("");
   const [showEditInput, setShowEditInput] = useState<string | null>(null);
   
+  // Selection UI States
   const [selectionRange, setSelectionRange] = useState<{ x: number, y: number, text: string } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, text: string } | null>(null);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [isExplaining, setIsExplaining] = useState(false);
   
+  // Translation States
   const [translation, setTranslation] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [showTranslateMenu, setShowTranslateMenu] = useState(false);
@@ -36,7 +38,7 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
 
   const [previewImage, setPreviewImage] = useState<MediaItem | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
-  const imageContainerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const currentWordCount = useMemo(() => {
     const text = message.text || "";
@@ -74,27 +76,113 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
     } catch (err) { console.error(err); } finally { setIsTranslating(false); }
   };
 
+  // Selection Logic
+  const handleMouseUp = () => {
+    const selection = window.getSelection();
+    if (selection && selection.toString().trim().length > 0) {
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      setSelectionRange({
+        x: rect.left + window.scrollX + (rect.width / 2),
+        y: rect.top + window.scrollY - 10,
+        text: selection.toString().trim()
+      });
+    } else {
+      setSelectionRange(null);
+    }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    const selection = window.getSelection();
+    const selectedText = selection?.toString().trim();
+    
+    if (selectedText) {
+      e.preventDefault();
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        text: selectedText
+      });
+    }
+  };
+
+  const runQuickExplain = async (textToExplain?: string) => {
+    const targetText = textToExplain || selectionRange?.text || contextMenu?.text;
+    if (!targetText) return;
+    
+    setContextMenu(null);
+    setSelectionRange(null);
+    setIsExplaining(true);
+    
+    try {
+      const result = await quickExplain(targetText);
+      setExplanation(result);
+    } catch (err) {
+      setExplanation("Analysis failed. Please try again.");
+    } finally {
+      setIsExplaining(false);
+    }
+  };
+
+  const handleTranslateSelection = async (lang: 'English' | 'Chinese') => {
+    const targetText = selectionRange?.text || contextMenu?.text;
+    if (!targetText) return;
+    
+    setContextMenu(null);
+    setSelectionRange(null);
+    setIsTranslating(true);
+    
+    try {
+      const result = await translateText(targetText, lang);
+      setExplanation(`Translation (${lang}):\n\n${result}`);
+    } catch (err) {
+      setExplanation("Translation failed.");
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleClickOutside = () => setContextMenu(null);
+    if (contextMenu) {
+      window.addEventListener('click', handleClickOutside);
+    }
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, [contextMenu]);
+
   return (
     <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-4 relative group`}>
       <div className={`flex items-start gap-3 max-w-[92%] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${isUser ? 'bg-himalaya-gold' : 'bg-himalaya-red text-himalaya-gold'}`}>
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${isUser ? 'bg-himalaya-gold border-himalaya-gold/20 text-himalaya-red' : 'bg-himalaya-red border-himalaya-gold text-himalaya-gold shadow-md'}`}>
           {isUser ? <User size={18} /> : <Bot size={18} />}
         </div>
         
-        <div className={`p-6 md:p-8 rounded-[1.5rem] shadow-xl ${isUser ? 'bg-himalaya-gold/15' : 'bg-white text-himalaya-dark border border-gray-100'}`}>
+        <div className={`p-6 md:p-8 rounded-[1.5rem] shadow-xl ${isUser ? 'bg-himalaya-gold/15 backdrop-blur-sm border border-himalaya-gold/25 text-himalaya-dark rounded-tr-none' : 'bg-white text-himalaya-dark rounded-tl-none border border-gray-100'}`}>
           <div className="flex justify-between items-center mb-4 opacity-30">
             <span className="text-[7px] font-black uppercase tracking-widest">{isUser ? 'Manuscript' : 'Record'}</span>
             <div className="flex items-center gap-3">
-              <button onClick={() => setShowTranslateMenu(!showTranslateMenu)} className="text-gray-400 hover:text-himalaya-red" title="Translate">
-                {isTranslating ? <Loader2 size={12} className="animate-spin" /> : <Languages size={12} />}
-              </button>
-              {showTranslateMenu && (
-                <div className="absolute right-0 top-full mt-2 bg-white border shadow-2xl rounded-xl p-1 z-50 flex flex-col animate-in zoom-in-95">
-                  <button onClick={() => handleTranslate('English')} className="px-3 py-1.5 text-[10px] font-black uppercase hover:bg-gray-50">English</button>
-                  <button onClick={() => handleTranslate('Chinese')} className="px-3 py-1.5 text-[10px] font-black uppercase hover:bg-gray-50">Chinese</button>
-                </div>
-              )}
+              <div className="relative">
+                <button onClick={() => setShowTranslateMenu(!showTranslateMenu)} className="text-gray-400 hover:text-himalaya-red" title="Translate Message">
+                  {isTranslating ? <Loader2 size={12} className="animate-spin" /> : <Languages size={12} />}
+                </button>
+                {showTranslateMenu && (
+                  <div className="absolute right-0 top-full mt-2 bg-white border border-gray-100 shadow-2xl rounded-xl p-1 z-50 flex flex-col min-w-[100px] animate-in fade-in zoom-in-95">
+                    <button onClick={() => handleTranslate('English')} className="px-3 py-1.5 text-[10px] font-black uppercase text-gray-600 hover:bg-gray-50 hover:text-himalaya-red rounded-lg text-left">English</button>
+                    <button onClick={() => handleTranslate('Chinese')} className="px-3 py-1.5 text-[10px] font-black uppercase text-gray-600 hover:bg-gray-50 hover:text-himalaya-red rounded-lg text-left">Chinese</button>
+                  </div>
+                )}
+              </div>
               {!isUser && <button onClick={handlePlayAudio} className="text-gray-400 hover:text-himalaya-red">{isPlaying ? <Loader2 size={12} className="animate-spin" /> : <Volume2 size={12} />}</button>}
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(message.text);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }} 
+                className={`transition-colors ${copied ? 'text-green-600' : 'text-gray-400 hover:text-himalaya-red'}`}
+              >
+                {copied ? <Check size={12} /> : <Copy size={12} />}
+              </button>
               <button onClick={() => onDelete?.(message.id)} className="text-gray-400 hover:text-red-600"><Trash2 size={12} /></button>
             </div>
           </div>
@@ -126,24 +214,8 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
             </div>
           )}
           
-          <div className="text-himalaya-dark font-tibetan text-[1.2rem] leading-relaxed whitespace-pre-wrap">{message.text}</div>
-
-          {translation && <div className="mt-6 pt-6 border-t border-himalaya-gold/10 italic text-gray-700">{translation}</div>}
-          
-          {!isUser && !message.isStreaming && (
-            <div className="flex flex-col items-center pt-6 mt-6 border-t border-gray-100">
-               <div className="flex items-center gap-2 px-4 py-1.5 bg-himalaya-red text-himalaya-gold rounded-full shadow-md">
-                  <ShieldCheck size={12} />
-                  <span className="text-[9px] font-black uppercase tracking-widest">Scholar Authorized</span>
-                  <div className="w-px h-3 bg-himalaya-gold/30 mx-1" />
-                  <span className="text-[10px] font-bold">+{currentWordCount} ཚིག།</span>
-               </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-});
-
-export default ChatMessage;
+          <div 
+            ref={contentRef}
+            onMouseUp={handleMouseUp}
+            onContextMenu={handleContextMenu}
+            className="text-himalaya-dark font-tibetan text-[1.2rem] leading-relaxed whitespace-pre-wrap selection:bg-himalaya
