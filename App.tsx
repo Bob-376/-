@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
   Loader2, Plus, Minus, X, Search, Compass, Maximize2, Minimize2, Edit3, 
@@ -26,11 +25,9 @@ const countHumanWords = (text: string): number => {
   return tshegs + hanzi + words;
 };
 
-// Live Audio Helper Functions
 function encode(bytes: Uint8Array) {
   let binary = '';
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary);
 }
 function decode(base64: string) {
@@ -54,7 +51,6 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [fontSize, setFontSize] = useState(22); 
   const [isLoading, setIsLoading] = useState(false);
   const [isInputVisible, setIsInputVisible] = useState(false); 
   const [isMaximized, setIsMaximized] = useState(false);
@@ -62,106 +58,51 @@ const App: React.FC = () => {
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
   const [useSearch, setUseSearch] = useState(true);
   const [thinkingMode, setThinkingMode] = useState(false);
+  const [ocrMode, setOcrMode] = useState(false); // New state for OCR toggle
   const [imageSize, setImageSize] = useState<"1K" | "2K" | "4K">("1K");
-
-  // Multimedia states
   const [isRecording, setIsRecording] = useState(false);
-  const [mediaLoading, setMediaLoading] = useState(false);
-  const [videoFile, setVideoFile] = useState<{data: string, type: string} | null>(null);
-  const [imageFiles, setImageFiles] = useState<Array<{id: string, data: string, type: string}>>([]);
-  const [showCamera, setShowCamera] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-
-  // Live Session States
   const [isLiveActive, setIsLiveActive] = useState(false);
-  const liveSessionRef = useRef<any>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const nextStartTimeRef = useRef(0);
-  const sourcesRef = useRef(new Set<AudioBufferSourceNode>());
-
-  // Layout states
   const [wsPos, setWsPos] = useState({ x: (window.innerWidth - 900) / 2, y: 120 });
   const [wsSize, setWsSize] = useState({ width: Math.min(900, window.innerWidth - 60), height: 500 });
   const [dragging, setDragging] = useState<{ startX: number, startY: number, initialX: number, initialY: number } | null>(null);
-  const [resizing, setResizing] = useState<{ startX: number, startY: number, initialW: number, initialY: number } | null>(null);
+
+  // New State for Image Uploads
+  const [pendingImages, setPendingImages] = useState<MediaItem[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const editorRef = useRef<HTMLDivElement>(null);
-  const quickInputRef = useRef<HTMLTextAreaElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const liveSessionRef = useRef<any>(null);
+  const nextStartTimeRef = useRef(0);
+  const sourcesRef = useRef(new Set<AudioBufferSourceNode>());
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Add the missing toggleWorkshop function
-  const toggleWorkshop = useCallback(() => {
-    setIsInputVisible(prev => !prev);
-  }, []);
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isMaximized && !isDocked) {
-      if (dragging) {
-        setWsPos({ 
-          x: dragging.initialX + (e.clientX - dragging.startX), 
-          y: dragging.initialY + (e.clientY - dragging.startY) 
-        });
-      } else if (resizing) {
-        setWsSize({ 
-          width: Math.max(400, resizing.initialW + (e.clientX - resizing.startX)), 
-          height: Math.max(250, resizing.initialH + (e.clientY - resizing.startY)) 
-        });
-      }
-    }
-  }, [dragging, resizing, isMaximized, isDocked]);
-
-  const handleMouseUp = useCallback(() => {
-    setDragging(null);
-    setResizing(null);
-  }, []);
+  const toggleWorkshop = useCallback(() => setIsInputVisible(prev => !prev), []);
 
   useEffect(() => {
-    if (dragging || resizing) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-      return () => {
-        window.removeEventListener('mousemove', handleMouseMove);
-        window.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [dragging, resizing, handleMouseMove, handleMouseUp]);
-
-  useEffect(() => {
-    if (autoScrollEnabled && !searchQuery) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
+    if (autoScrollEnabled && !searchQuery) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, autoScrollEnabled, searchQuery]);
 
-  // LIVE API Session Logic
-  const toggleLiveSession = async () => {
-    if (isLiveActive) {
-      liveSessionRef.current?.close();
-      setIsLiveActive(false);
-      return;
-    }
+  // Reset OCR mode when images are cleared
+  useEffect(() => {
+    if (pendingImages.length === 0) setOcrMode(false);
+  }, [pendingImages]);
 
+  const toggleLiveSession = async () => {
+    if (isLiveActive) { liveSessionRef.current?.close(); setIsLiveActive(false); return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      audioContextRef.current = outputCtx;
-
       const sessionPromise = connectLiveSession({
         onopen: () => {
           const source = inputCtx.createMediaStreamSource(stream);
           const processor = inputCtx.createScriptProcessor(4096, 1, 1);
           processor.onaudioprocess = (e) => {
-            const inputData = e.inputBuffer.getChannelData(0);
-            const int16 = new Int16Array(inputData.length);
-            for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
-            sessionPromise.then(session => {
-              session.sendRealtimeInput({ media: { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' } });
-            });
+            const int16 = new Int16Array(e.inputBuffer.getChannelData(0).length);
+            for (let i = 0; i < int16.length; i++) int16[i] = e.inputBuffer.getChannelData(0)[i] * 32768;
+            sessionPromise.then(session => session.sendRealtimeInput({ media: { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' } }));
           };
-          source.connect(processor);
-          processor.connect(inputCtx.destination);
+          source.connect(processor); processor.connect(inputCtx.destination);
         },
         onmessage: async (msg) => {
           const base64 = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
@@ -169,91 +110,105 @@ const App: React.FC = () => {
             nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx.currentTime);
             const buffer = await decodeAudioData(decode(base64), outputCtx, 24000, 1);
             const source = outputCtx.createBufferSource();
-            source.buffer = buffer;
-            source.connect(outputCtx.destination);
-            source.start(nextStartTimeRef.current);
-            nextStartTimeRef.current += buffer.duration;
+            source.buffer = buffer; source.connect(outputCtx.destination);
+            source.start(nextStartTimeRef.current); nextStartTimeRef.current += buffer.duration;
             sourcesRef.current.add(source);
           }
-          if (msg.serverContent?.interrupted) {
-            sourcesRef.current.forEach(s => s.stop());
-            sourcesRef.current.clear();
-            nextStartTimeRef.current = 0;
-          }
         },
-        onerror: (e) => console.error(e),
+        onerror: () => setIsLiveActive(false),
         onclose: () => setIsLiveActive(false),
       });
+      liveSessionRef.current = await sessionPromise; setIsLiveActive(true);
+    } catch (err) { console.error(err); }
+  };
 
-      liveSessionRef.current = await sessionPromise;
-      setIsLiveActive(true);
-    } catch (err) {
-      console.error("Live session failed:", err);
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const files = Array.from(e.target.files) as File[];
+      const newImages: MediaItem[] = [];
+      for (const file of files) {
+        const reader = new FileReader();
+        const base64 = await new Promise<string>((resolve) => {
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.readAsDataURL(file);
+        });
+        newImages.push({
+          type: file.type.startsWith('video') ? 'video' : 'image',
+          data: base64, 
+          mimeType: file.type
+        });
+      }
+      setPendingImages(prev => [...prev, ...newImages]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  const checkAndOpenSelectKey = async () => {
-    if (!(await (window as any).aistudio.hasSelectedApiKey())) {
-      await (window as any).aistudio.openSelectKey();
-    }
+  const removePendingImage = (index: number) => {
+    setPendingImages(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSend = async (overrideText?: string, targetId?: string, accumulatedText = "") => {
-    const text = overrideText || (isInputVisible ? editorRef.current?.innerText.trim() : inputText.trim());
-    if ((!text && imageFiles.length === 0 && !videoFile) || (isLoading && !overrideText)) return;
+    let text = overrideText || (isInputVisible ? editorRef.current?.innerText.trim() : inputText.trim());
+    if ((!text && pendingImages.length === 0) && !overrideText) return;
     
-    let sentMedia: MediaItem[] = [];
-    if (!overrideText) {
-      if (imageFiles.length > 0) sentMedia = imageFiles.map(img => ({ type: 'image', data: img.data, mimeType: img.type }));
-      if (videoFile) sentMedia.push({ type: 'video', data: videoFile.data, mimeType: videoFile.type });
-
-      if (editorRef.current) editorRef.current.innerHTML = '';
-      setInputText("");
-      setVideoFile(null);
-      setImageFiles([]);
+    // Explicitly append OCR trigger if mode is active
+    if (ocrMode && pendingImages.length > 0 && !text.includes("OCR")) {
+      text = text ? `[OCR MODE] ${text}` : "[OCR MODE] Extract text from this image.";
     }
+
+    setIsLoading(true); 
+    setInputText(""); 
+    if (editorRef.current) editorRef.current.innerHTML = '';
     
-    setIsLoading(true);
-    let botMsgId = targetId || Date.now().toString();
-    const history = messages.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
-    
+    const imagesToSend = [...pendingImages];
+    setPendingImages([]);
+
+    const botMsgId = targetId || Date.now().toString();
     if (!targetId) {
       setMessages(prev => [
-        ...prev,
-        { id: (Date.now() + 1).toString(), role: 'user', text: text || "Analyze artifacts.", timestamp: Date.now(), mediaItems: sentMedia.length > 0 ? sentMedia : undefined },
-        { id: botMsgId, role: 'model', text: 'འཕྲུལ་ཆས་ཀྱིས་ཤེས་རིག་གཏེར་མཛོད་ནས་བཙལ་འཚོལ་བྱེད་བཞིན་པ...', isStreaming: true, timestamp: Date.now() }
+        ...prev, 
+        { 
+          id: Date.now().toString(), 
+          role: 'user', 
+          text, 
+          timestamp: Date.now(),
+          mediaItems: imagesToSend.length > 0 ? imagesToSend : undefined
+        }, 
+        { 
+          id: botMsgId, 
+          role: 'model', 
+          text: '...', 
+          isStreaming: true, 
+          timestamp: Date.now() 
+        }
       ]);
     }
 
     try {
-      let result;
-      const imagesOnly = sentMedia.filter(m => m.type === 'image');
-      const videoOnly = sentMedia.filter(m => m.type === 'video');
+      const history = messages.map(m => {
+        const parts: any[] = [];
+        if (m.mediaItems) {
+          m.mediaItems.forEach(img => {
+            const b64 = img.data.includes('base64,') ? img.data.split('base64,')[1] : img.data;
+            parts.push({ inlineData: { data: b64, mimeType: img.mimeType } });
+          });
+        }
+        parts.push({ text: m.text || " " });
+        return { role: m.role, parts };
+      });
 
-      if (imagesOnly.length > 0 && !targetId) {
-        result = { text: await analyzeImages(imagesOnly.map(img => ({ data: img.data, mimeType: img.mimeType })), text || "Analyze artifacts."), grounding: null };
-      } else if (videoOnly.length > 0 && !targetId) {
-        result = { text: await analyzeVideo(videoOnly[0].data, videoOnly[0].mimeType, text || "Analyze video."), grounding: null };
-      } else {
-        result = await sendMessageToSession(text || "Explain context.", history, (chunk) => {
-          setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: accumulatedText + chunk } : m));
-        }, { useSearch, thinkingMode });
-      }
+      const result = await sendMessageToSession(
+        text, 
+        history, 
+        chunk => setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: accumulatedText + chunk } : m)), 
+        { useSearch, thinkingMode, images: imagesToSend }
+      );
       
-      const fullContent = (accumulatedText + result.text).replace("[COMPLETE]", "");
-      const hasContinueSignal = fullContent.includes("[CONTINUE_SIGNAL]");
-      const cleanedContent = fullContent.replace("[CONTINUE_SIGNAL]", "");
-      
-      if (hasContinueSignal && totalWordsCountSum + countHumanWords(cleanedContent) < EPIC_GOAL_WORDS) {
-        setTimeout(() => handleSend("མུ་མཐུད་དུ་ཞིབ་འགྲེལ་གནང་རོགས། (Continue...)", botMsgId, cleanedContent), 600);
-      } else {
-        setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: cleanedContent, isStreaming: false, groundingChunks: result.grounding } : m));
-        setIsLoading(false);
-      }
-    } catch (e) {
-      setIsLoading(false);
-      setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, isStreaming: false, text: "Interrupted." } : m));
+      setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: result.text, isStreaming: false, groundingChunks: result.grounding } : m));
+    } catch (e) { 
+      setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, isStreaming: false, text: "Interrupted." } : m)); 
     }
+    setIsLoading(false);
   };
 
   const handleImageOCR = async (media: MediaItem) => {
@@ -261,11 +216,11 @@ const App: React.FC = () => {
     const botMsgId = Date.now().toString();
     setMessages(prev => [
       ...prev,
-      { id: (Date.now() + 1).toString(), role: 'user', text: "བོད་ཡིག་原文提取 (Extracting Tibetan text...)", timestamp: Date.now(), mediaItems: [media] },
-      { id: botMsgId, role: 'model', text: 'འཕྲུལ་ཆས་ཀྱིས་པར་རིས་ནང་གི་བོད་ཡིག་ངོ་འཛིན་བྱེད་བཞིན་པ...', isStreaming: true, timestamp: Date.now() }
+      { id: (Date.now() + 1).toString(), role: 'user', text: "OCR: Extract Tibetan text.", timestamp: Date.now(), mediaItems: [media] },
+      { id: botMsgId, role: 'model', text: 'Transcribing...', isStreaming: true, timestamp: Date.now() }
     ]);
     try {
-      const text = await analyzeImages([{ data: media.data, mimeType: media.mimeType }], "Extract all Tibetan (བོད་ཡིག) text from this image accurately.");
+      const text = await analyzeImages([{ data: media.data, mimeType: media.mimeType }], "Strictly extract all text from this image.");
       setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text, isStreaming: false } : m));
     } catch (e) {
       setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: "OCR Analysis failed.", isStreaming: false } : m));
@@ -273,30 +228,23 @@ const App: React.FC = () => {
     setIsLoading(false);
   };
 
-  const handleGenerateImage = async () => {
-    const text = isInputVisible ? editorRef.current?.innerText.trim() : inputText.trim();
-    if (!text) return;
-    await checkAndOpenSelectKey();
-    setIsLoading(true);
-    try {
-      const b64 = await generateImagesNano(text, imageSize);
-      setMessages(prev => [...prev, 
-        { id: Date.now().toString(), role: 'user', text: `Generate ${imageSize} image: ${text}`, timestamp: Date.now() },
-        { id: (Date.now()+1).toString(), role: 'model', text: 'Artifact generated.', timestamp: Date.now(), mediaItems: [{ type: 'image', data: b64, mimeType: 'image/png' }] }
-      ]);
-      setInputText("");
-      if (editorRef.current) editorRef.current.innerHTML = '';
-    } catch (e) { console.error(e); }
-    setIsLoading(false);
+  // ... (handleImageUpdate, handleAnimateImage, handleEditImage remain same)
+  const handleImageUpdate = (oldMedia: MediaItem, newBase64: string) => {
+    setMessages(prev => [...prev, {
+      id: Date.now().toString(),
+      role: 'model',
+      text: "Artifact modified with manual text overlay.",
+      timestamp: Date.now(),
+      mediaItems: [{ ...oldMedia, data: newBase64, mimeType: 'image/png' }]
+    }]);
   };
 
   const handleAnimateImage = async (media: MediaItem) => {
-    await checkAndOpenSelectKey();
     setIsLoading(true);
     try {
       const videoUri = await generateVideoVeo("Animate this artifact with cultural essence.", media.data);
       setMessages(prev => [...prev, 
-        { id: Date.now().toString(), role: 'user', text: `Animate artifact with Veo.`, timestamp: Date.now() },
+        { id: Date.now().toString(), role: 'user', text: `Animate artifact.`, timestamp: Date.now() },
         { id: (Date.now()+1).toString(), role: 'model', text: 'Motion synthesis complete.', timestamp: Date.now(), mediaItems: [{ type: 'video', data: videoUri, mimeType: 'video/mp4' }] }
       ]);
     } catch (e) { console.error(e); }
@@ -314,177 +262,100 @@ const App: React.FC = () => {
     } catch (e) { console.error(e); }
     setIsLoading(false);
   };
-  
-  const handleAddHotspot = (msgId: string, mediaIdx: number, hotspot: {x: number, y: number, label: string}) => {
-    setMessages(prev => prev.map(msg => {
-      if (msg.id !== msgId) return msg;
-      if (!msg.mediaItems || !msg.mediaItems[mediaIdx]) return msg;
-      
-      const newMedia = [...msg.mediaItems];
-      const item = { ...newMedia[mediaIdx] };
-      item.hotspots = [...(item.hotspots || []), hotspot];
-      newMedia[mediaIdx] = item;
-      
-      return { ...msg, mediaItems: newMedia };
-    }));
-  };
-
-  const handleExport = () => {
-    if (messages.length === 0) return;
-    const textContent = messages.map(m => `[${new Date(m.timestamp).toLocaleString()}] ${m.role === 'user' ? 'USER' : 'SYSTEM'}:\n${m.text.trim()}\n\n`).join('\n');
-    const blob = new Blob([textContent], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `retrieval_${Date.now()}.txt`; a.click();
-  };
 
   const totalWordsCountSum = useMemo(() => messages.reduce((sum, m) => sum + countHumanWords(m.text), 0), [messages]);
 
   return (
     <div className="flex flex-col h-screen bg-himalaya-cream font-tibetan overflow-hidden relative">
-      <Header 
-        onReset={() => setMessages([])} 
-        onResetLayout={() => { setWsPos({ x: (window.innerWidth - 900) / 2, y: 120 }); setIsDocked(true); }} 
-        onToggleMemory={() => {}} 
-        onToggleAutoScroll={() => setAutoScrollEnabled(!autoScrollEnabled)}
-        onToggleInput={toggleWorkshop}
-        onExport={handleExport}
-        autoScrollEnabled={autoScrollEnabled}
-        isInputVisible={isInputVisible}
-        totalCharacters={totalWordsCountSum}
-        totalTshegs={messages.reduce((s, m) => s + (m.text.match(/་/g) || []).length, 0)}
-        epicGoal={EPIC_GOAL_WORDS}
-      />
+      <Header onReset={() => setMessages([])} onResetLayout={() => setIsDocked(true)} onToggleMemory={() => {}} onToggleAutoScroll={() => setAutoScrollEnabled(!autoScrollEnabled)} onToggleInput={toggleWorkshop} onExport={() => {}} autoScrollEnabled={autoScrollEnabled} isInputVisible={isInputVisible} totalCharacters={totalWordsCountSum} totalTshegs={0} epicGoal={EPIC_GOAL_WORDS} />
+      
+      {/* Hidden File Input */}
+      <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept="image/*" multiple className="hidden" />
 
       <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
         <div className="max-w-4xl mx-auto space-y-10 pb-[250px]">
-          {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-32 opacity-10 text-himalaya-red">
-              <Sparkles size={160} strokeWidth={0.5} />
-              <p className="text-[3rem] font-bold mt-6 text-center">ཤེས་རིག་གཏེར་མཛོད།</p>
-            </div>
-          )}
-          {messages.filter(m => !searchQuery || m.text.toLowerCase().includes(searchQuery.toLowerCase())).map((msg) => (
-            <ChatMessage 
-              key={msg.id} 
-              message={msg} 
-              onDelete={(id) => setMessages(prev => prev.filter(m => m.id !== id))} 
-              onOCR={handleImageOCR}
-              onAnimate={handleAnimateImage}
-              onEdit={handleEditImage}
-              onAddHotspot={handleAddHotspot}
-            />
-          ))}
+          {messages.length === 0 && <div className="py-32 opacity-10 text-himalaya-red text-center"><Sparkles size={160} className="mx-auto" /><p className="text-[3rem] font-bold mt-6">ཤེས་རིག་གཏེར་མཛོད།</p></div>}
+          {messages.map(msg => <ChatMessage key={msg.id} message={msg} onDelete={id => setMessages(prev => prev.filter(m => m.id !== id))} onOCR={handleImageOCR} onAnimate={handleAnimateImage} onEdit={handleEditImage} onImageUpdate={handleImageUpdate} />)}
           <div ref={messagesEndRef} />
         </div>
       </main>
 
       {!isInputVisible && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-full max-w-4xl px-4 z-[150] animate-in slide-in-from-bottom-10">
-          <div className="bg-white/80 backdrop-blur-xl border-2 border-himalaya-gold shadow-2xl rounded-[2rem] p-2 flex items-center gap-2 group">
-             <div className="flex items-center gap-1.5 pl-2">
-                <button 
-                  onClick={toggleLiveSession}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isLiveActive ? 'bg-green-600 text-white animate-pulse' : 'text-gray-400 hover:bg-gray-100'}`}
-                  title="Live Scholar Conversation"
-                >
-                   {isLiveActive ? <Volume2 size={20} /> : <Radio size={20} />}
-                </button>
-                <button 
-                  onClick={isRecording ? () => mediaRecorderRef.current?.stop() : async () => {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    const recorder = new MediaRecorder(stream);
-                    const chunks: any[] = [];
-                    recorder.ondataavailable = e => chunks.push(e.data);
-                    recorder.onstop = async () => {
-                      setMediaLoading(true);
-                      const blob = new Blob(chunks, { type: 'audio/webm' });
-                      const reader = new FileReader();
-                      reader.onloadend = async () => {
-                        const transcript = await transcribeAudio((reader.result as string).split(',')[1]);
-                        setInputText(p => p + transcript);
-                        setMediaLoading(false);
-                      };
-                      reader.readAsDataURL(blob);
-                    };
-                    recorder.start(); mediaRecorderRef.current = recorder; setIsRecording(true);
-                  }}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-gray-400 hover:bg-gray-100'}`}
-                  title="Voice Input"
-                >
-                   <Mic size={20} />
-                </button>
-             </div>
-
-             <textarea 
-               value={inputText}
-               onChange={(e) => setInputText(e.target.value)}
-               placeholder="Write manuscript or prompt..."
-               className="flex-1 bg-transparent border-none outline-none font-tibetan py-2.5 px-3 resize-none max-h-32 text-lg"
-               rows={1}
-               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-             />
-
-             <div className="flex items-center gap-1 pr-1">
-                <div className="flex flex-col items-center mr-1">
-                   <button onClick={() => setThinkingMode(!thinkingMode)} className={`p-2 rounded-lg ${thinkingMode ? 'text-purple-600' : 'text-gray-300'}`} title="Deep Thinking Mode">
-                      <Brain size={18} />
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-full max-w-4xl px-4 z-[150]">
+          
+          {/* Image Preview with OCR Toggle */}
+          {pendingImages.length > 0 && (
+            <div className="mb-4">
+              <div className="flex gap-2 overflow-x-auto pb-2 px-2 custom-scrollbar items-end">
+                {pendingImages.map((img, idx) => (
+                  <div key={idx} className="relative w-20 h-20 shrink-0 group">
+                    <img src={img.data} alt="Preview" className="w-full h-full object-cover rounded-xl border-2 border-himalaya-gold shadow-lg" />
+                    <button onClick={() => removePendingImage(idx)} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 shadow-md hover:scale-110 transition-transform">
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+                <div className="mb-2 ml-2">
+                   <button 
+                     onClick={() => setOcrMode(!ocrMode)}
+                     className={`flex items-center gap-2 px-4 py-2 rounded-full border shadow-md transition-all ${ocrMode ? 'bg-himalaya-gold text-himalaya-red border-himalaya-red font-bold' : 'bg-white text-gray-500 border-gray-200'}`}
+                   >
+                     <SearchCode size={16} />
+                     <span className="text-xs uppercase tracking-wider">{ocrMode ? 'OCR Active' : 'Text OCR'}</span>
                    </button>
                 </div>
-                <div className="flex items-center bg-gray-50 rounded-xl p-1 gap-1 border border-gray-100">
-                  <button onClick={handleGenerateImage} className="w-10 h-10 flex items-center justify-center text-himalaya-gold hover:text-himalaya-red" title="Imagen Generation">
-                    <Wand2 size={20} />
-                  </button>
-                  <select value={imageSize} onChange={e => setImageSize(e.target.value as any)} className="text-[8px] font-black uppercase bg-white border-none outline-none">
-                    <option value="1K">1K</option>
-                    <option value="2K">2K</option>
-                    <option value="4K">4K</option>
-                  </select>
-                </div>
-                <button onClick={() => handleSend()} disabled={isLoading} className="w-12 h-12 bg-himalaya-red text-himalaya-gold rounded-[1.25rem] flex items-center justify-center shadow-lg transition-all active:scale-95 disabled:opacity-50">
-                   {isLoading ? <Loader2 size={20} className="animate-spin" /> : <SendHorizonal size={22} />}
-                </button>
-             </div>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white/80 backdrop-blur-xl border-2 border-himalaya-gold shadow-2xl rounded-[2rem] p-2 flex items-center gap-2">
+             <button onClick={toggleLiveSession} className={`w-10 h-10 rounded-full flex items-center justify-center ${isLiveActive ? 'bg-green-600 text-white' : 'text-gray-400'}`}><Radio size={20} /></button>
+             <button onClick={() => fileInputRef.current?.click()} className="w-10 h-10 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-himalaya-red transition-colors" title="Upload Image"><ImageIcon size={20} /></button>
+             <textarea value={inputText} onChange={e => setInputText(e.target.value)} placeholder={ocrMode ? "Instructions (optional)..." : "Write manuscript..."} className="flex-1 bg-transparent border-none outline-none font-tibetan py-2.5 px-3 resize-none max-h-32 text-lg" rows={1} />
+             <button onClick={() => setThinkingMode(!thinkingMode)} className={`p-2 rounded-lg ${thinkingMode ? 'text-purple-600' : 'text-gray-300'}`}><Brain size={18} /></button>
+             <button onClick={() => handleSend()} disabled={isLoading} className="w-12 h-12 bg-himalaya-red text-himalaya-gold rounded-[1.25rem] flex items-center justify-center shadow-lg active:scale-95 disabled:opacity-50">{isLoading ? <Loader2 size={20} className="animate-spin" /> : <SendHorizonal size={22} />}</button>
           </div>
         </div>
       )}
-
       {isInputVisible && (
-        <div 
-          className={`fixed flex flex-col bg-white overflow-hidden transition-all duration-500 ease-in-out ${isMaximized ? 'inset-0 z-[200]' : isDocked ? 'bottom-0 left-0 right-0 h-[65vh] border-t-4 border-himalaya-gold rounded-t-[3rem] z-[200]' : 'border-4 border-himalaya-gold shadow-2xl rounded-[2.5rem] z-[200]'}`} 
-          style={(!isMaximized && !isDocked) ? { width: `${wsSize.width}px`, height: `${wsSize.height}px`, left: `${wsPos.x}px`, top: `${wsPos.y}px` } : {}}
-        >
-          <div onMouseDown={(e) => { if (isMaximized || isDocked || (e.target as HTMLElement).closest('button')) return; setDragging({ startX: e.clientX, startY: e.clientY, initialX: wsPos.x, initialY: wsPos.y }); }}
-            className="h-14 bg-gray-50 flex items-center justify-between px-8 border-b cursor-grab active:cursor-grabbing shrink-0"
-          >
-            <div className="flex items-center gap-4">
-              <span className="text-[11px] font-bold text-himalaya-red uppercase tracking-widest">Master Scribe Workshop</span>
-              <button onClick={() => setThinkingMode(!thinkingMode)} className={`flex items-center gap-1 text-[8px] font-black px-2 py-0.5 rounded-full border ${thinkingMode ? 'bg-purple-600 text-white border-purple-700' : 'bg-gray-200 text-gray-500 border-gray-300'}`}>
-                <Brain size={10} /> Thinking {thinkingMode ? 'ON' : 'OFF'}
-              </button>
-            </div>
+        <div className={`fixed flex flex-col bg-white overflow-hidden transition-all ${isMaximized ? 'inset-0 z-[200]' : 'bottom-0 left-0 right-0 h-[65vh] border-t-4 border-himalaya-gold rounded-t-[3rem] z-[200]'}`}>
+          <div className="h-14 bg-gray-50 flex items-center justify-between px-8 border-b">
+            <span className="text-[11px] font-bold text-himalaya-red uppercase tracking-widest">Master Scribe Workshop</span>
             <div className="flex items-center gap-2">
-              <button onClick={() => setIsDocked(!isDocked)} className="px-2.5 py-1 bg-gray-200 rounded-full text-[8px] font-black uppercase">{isDocked ? 'Docked' : 'Float'}</button>
-              <button onClick={() => setUseSearch(!useSearch)} className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase ${useSearch ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>Search {useSearch ? 'ON' : 'OFF'}</button>
+              <button onClick={() => setThinkingMode(!thinkingMode)} className={`text-[8px] font-black px-2 py-1 rounded-full border ${thinkingMode ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-500'}`}>Deep Think {thinkingMode ? 'ON' : 'OFF'}</button>
+              <button onClick={() => setUseSearch(!useSearch)} className={`px-2 py-1 rounded-full text-[8px] font-black uppercase ${useSearch ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>Search {useSearch ? 'ON' : 'OFF'}</button>
               <button onClick={() => setIsMaximized(!isMaximized)} className="text-gray-400 hover:text-himalaya-red">{isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
               <button onClick={toggleWorkshop} className="p-1 text-gray-400 hover:text-red-600"><X size={16} /></button>
             </div>
           </div>
-
-          <div className="flex-1 flex flex-col min-h-0 bg-white">
-            <div ref={editorRef} contentEditable spellCheck="false" style={{ fontSize: `${fontSize}px` }} data-placeholder="Enter manuscript..." className="workshop-editor flex-1 outline-none font-tibetan leading-[1.8] overflow-y-auto p-10 custom-scrollbar" />
-            <div className="h-20 border-t flex items-center justify-between px-8 bg-white shadow-inner">
-              <div className="flex items-center gap-3">
-                <button onClick={handleGenerateImage} className="flex items-center gap-2 bg-himalaya-gold text-himalaya-red px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-md hover:scale-105 transition-all"><Wand2 size={16} /> Generate Artifact</button>
-                <select value={imageSize} onChange={e => setImageSize(e.target.value as any)} className="text-[9px] font-black uppercase border p-1 rounded">
-                   <option value="1K">1K RES</option>
-                   <option value="2K">2K RES</option>
-                   <option value="4K">4K RES</option>
-                </select>
+          <div className="flex-1 flex flex-col min-h-0">
+            <div ref={editorRef} contentEditable spellCheck="false" data-placeholder="Enter manuscript..." className="workshop-editor flex-1 outline-none font-tibetan leading-[1.8] overflow-y-auto p-10 custom-scrollbar" />
+            
+            {pendingImages.length > 0 && (
+               <div className="px-8 py-2 flex gap-3 overflow-x-auto border-t border-gray-100 bg-gray-50 items-center">
+                {pendingImages.map((img, idx) => (
+                  <div key={idx} className="relative w-16 h-16 shrink-0 group">
+                    <img src={img.data} alt="Preview" className="w-full h-full object-cover rounded-lg border shadow-sm" />
+                    <button onClick={() => removePendingImage(idx)} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-0.5 shadow hover:scale-110">
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+                 <button 
+                     onClick={() => setOcrMode(!ocrMode)}
+                     className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold uppercase tracking-wider transition-all ${ocrMode ? 'bg-himalaya-gold text-himalaya-red border-himalaya-red' : 'bg-white text-gray-500 border-gray-200'}`}
+                   >
+                     <SearchCode size={14} />
+                     {ocrMode ? 'OCR ON' : 'OCR'}
+                   </button>
               </div>
-              <button onClick={() => handleSend()} disabled={isLoading} className="flex items-center gap-2.5 px-8 py-2.5 rounded-xl font-black bg-himalaya-red text-himalaya-gold shadow-lg disabled:opacity-50">
-                {isLoading ? <Loader2 className="animate-spin" size={18} /> : <Compass size={18} />}
-                <span className="text-[10px] uppercase tracking-widest">Synthesize Knowledge</span>
+            )}
+
+            <div className="h-20 border-t flex items-center justify-between px-8 bg-white">
+              <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 text-gray-400 hover:text-himalaya-red font-bold text-xs uppercase tracking-widest">
+                <ImageIcon size={16} /> Add Visual Artifacts
               </button>
+              <button onClick={() => handleSend()} disabled={isLoading} className="flex items-center gap-2.5 px-8 py-2.5 rounded-xl font-black bg-himalaya-red text-himalaya-gold shadow-lg disabled:opacity-50">{isLoading ? <Loader2 className="animate-spin" size={18} /> : <Compass size={18} />}<span className="text-[10px] uppercase tracking-widest">Synthesize Knowledge</span></button>
             </div>
           </div>
         </div>

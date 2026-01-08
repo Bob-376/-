@@ -1,5 +1,5 @@
-
 import { GoogleGenAI, Chat, GenerateContentResponse, Modality, Type, LiveServerMessage } from "@google/genai";
+import { MediaItem } from '../types';
 
 const SYSTEM_INSTRUCTION = `
 You are the "Grand Intelligent Retrieval Architect of the Snowy Peaks" (ཤེས་རིག་བཙལ་བཤེར་མ་ལག).
@@ -13,44 +13,105 @@ STRICT OPERATIONAL PROTOCOL:
 5. NO META-TALK: Output ONLY scholarly text.
 `;
 
+const OCR_SYSTEM_INSTRUCTION = `
+You are a specialized Optical Character Recognition (OCR) engine for Tibetan (Uchen/Pecha), Chinese, and English.
+Your SOLE purpose is to transcribe text from the image.
+
+STRICT EXECUTION RULES:
+1. OUTPUT RAW TEXT ONLY.
+2. NO conversational fillers (e.g., "Here is the text", "The image contains").
+3. NO descriptions of the image content (e.g., "This is a page from a sutra").
+4. NO translations. Maintain the original language.
+5. PRESERVE LAYOUT: Keep line breaks and paragraph structure as they appear.
+6. TIBETAN PRECISION: Transcribe standard Unicode Tibetan exactly.
+7. If the image contains mixed languages, transcribe all of them in order.
+8. If NO text is found, return "NO_TEXT_FOUND".
+`;
+
+const cleanBase64 = (data: string) => {
+  if (data.includes('base64,')) {
+    return data.split('base64,')[1];
+  }
+  return data;
+};
+
+const isOCR = (text: string) => {
+  const lower = text.toLowerCase();
+  return lower.includes("ocr") || 
+         text.includes("识别") || 
+         text.includes("提取") || 
+         text.includes("原文") || 
+         text.includes("བོད་ཡིག་") || // Bod yig (Tibetan)
+         text.includes("transcribe") ||
+         text.includes("text from image") ||
+         text.includes("read text") ||
+         text.includes("文字") ||
+         text.includes("what does it say");
+};
+
 export const sendMessageToSession = async (
   text: string,
   history: any[],
   onUpdate: (text: string) => void,
-  options: { useSearch?: boolean; thinkingMode?: boolean; fastMode?: boolean } = {}
+  options: { useSearch?: boolean; thinkingMode?: boolean; fastMode?: boolean; images?: MediaItem[] } = {}
 ): Promise<{ text: string; grounding?: any[] }> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
+  // Check for OCR intent
+  const isOCRRequest = options.images && options.images.length > 0 && isOCR(text);
+
   // Model selection based on requirements
-  // Use gemini-flash-lite-latest for basic fast responses
   let model = 'gemini-flash-lite-latest'; 
   if (options.useSearch) model = 'gemini-3-flash-preview';
   if (options.thinkingMode) model = 'gemini-3-pro-preview';
+  
+  // Use gemini-3-flash-preview for OCR as it follows instructions better than 2.5-flash-image
+  if (options.images && options.images.length > 0) {
+    model = isOCRRequest ? 'gemini-3-flash-preview' : 'gemini-2.5-flash-image';
+  }
 
   const config: any = {
-    systemInstruction: SYSTEM_INSTRUCTION,
-    temperature: 0.9,
+    systemInstruction: isOCRRequest ? OCR_SYSTEM_INSTRUCTION : SYSTEM_INSTRUCTION,
+    temperature: isOCRRequest ? 0.0 : 0.9, // Zero temperature for deterministic OCR
   };
 
   if (options.thinkingMode) {
     config.thinkingConfig = { thinkingBudget: 32768 };
-    // maxOutputTokens is omitted per instructions when maxing thinking budget
   } else {
     config.maxOutputTokens = 8192;
   }
 
-  if (options.useSearch) {
+  if (options.useSearch && !options.images && !isOCRRequest) {
     config.tools = [{ googleSearch: {} }];
   }
 
   const chat = ai.chats.create({
     model: model,
     config: config,
-    history: history,
+    history: isOCRRequest ? [] : history, // Stateless for OCR to avoid context pollution
   });
 
   try {
-    const responseStream = await chat.sendMessageStream({ message: text });
+    let messageInput: string | any[] = text;
+    
+    if (options.images && options.images.length > 0) {
+      // For OCR, we enforce a strict prompt override to ensure the model behaves
+      const promptText = isOCRRequest 
+        ? `STRICT OCR TASK: Transcribe all text from this image exactly. Do not explain. Do not translate. \n\nUser Context: ${text}` 
+        : (text || "Analyze this image.");
+
+      messageInput = [
+        ...options.images.map(img => ({
+          inlineData: {
+            data: cleanBase64(img.data),
+            mimeType: img.mimeType
+          }
+        })),
+        { text: promptText }
+      ];
+    }
+
+    const responseStream = await chat.sendMessageStream({ message: messageInput });
     let fullText = "";
     let grounding = null;
 
@@ -73,17 +134,23 @@ export const sendMessageToSession = async (
 
 export const analyzeImages = async (images: Array<{ data: string; mimeType: string }>, prompt: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const isOCRRequest = prompt.toLowerCase().includes("ocr") || prompt.includes("识别") || prompt.includes("提取") || prompt.includes("原文") || prompt.includes("བོད་ཡིག་");
+  const isOCRRequest = isOCR(prompt);
   
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: {
       parts: [
-        ...images.map(img => ({ inlineData: { data: img.data, mimeType: img.mimeType } })),
-        { text: isOCRRequest ? `PURE OCR: Extract Tibetan/mixed text precisely.` : prompt }
+        ...images.map(img => ({ inlineData: { data: cleanBase64(img.data), mimeType: img.mimeType } })),
+        { text: isOCRRequest ? `PURE OCR TASK: Please extract ALL text from the provided image(s) exactly as it appears. 
+        If the text is Tibetan, transcribe it accurately in Unicode Tibetan. 
+        If it is Chinese or English, transcribe it as well. 
+        Do not translate unless asked. Do not summarize. Provide the raw text content.` : prompt }
       ]
     },
-    config: { systemInstruction: SYSTEM_INSTRUCTION }
+    config: { 
+      systemInstruction: isOCRRequest ? OCR_SYSTEM_INSTRUCTION : SYSTEM_INSTRUCTION,
+      temperature: isOCRRequest ? 0.0 : 0.9
+    }
   });
   return response.text || "";
 };
@@ -109,7 +176,7 @@ export const editImageNano = async (base64: string, mimeType: string, prompt: st
     model: 'gemini-2.5-flash-image',
     contents: {
       parts: [
-        { inlineData: { data: base64, mimeType } },
+        { inlineData: { data: cleanBase64(base64), mimeType } },
         { text: prompt }
       ]
     }
@@ -128,7 +195,7 @@ export const generateVideoVeo = async (prompt: string, imageBase64?: string): Pr
   };
   
   if (imageBase64) {
-    config.image = { imageBytes: imageBase64, mimeType: 'image/png' };
+    config.image = { imageBytes: cleanBase64(imageBase64), mimeType: 'image/png' };
   }
 
   let operation = await ai.models.generateVideos(config);
@@ -148,7 +215,6 @@ export const generateSpeech = async (text: string): Promise<Uint8Array> => {
     model: "gemini-2.5-flash-preview-tts",
     contents: [{ parts: [{ text: `Say naturally: ${text}` }] }],
     config: {
-      // Fix typo in responseModalities
       responseModalities: [Modality.AUDIO],
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
     },
@@ -169,7 +235,7 @@ export const transcribeAudio = async (base64Audio: string): Promise<string> => {
     model: "gemini-3-flash-preview",
     contents: {
       parts: [
-        { inlineData: { data: base64Audio, mimeType: 'audio/webm' } },
+        { inlineData: { data: cleanBase64(base64Audio), mimeType: 'audio/webm' } },
         { text: "Transcribe accurately." }
       ]
     }
@@ -183,7 +249,7 @@ export const analyzeVideo = async (base64Video: string, mimeType: string, prompt
     model: 'gemini-3-pro-preview',
     contents: {
       parts: [
-        { inlineData: { data: base64Video, mimeType } },
+        { inlineData: { data: cleanBase64(base64Video), mimeType } },
         { text: `Analyze video: ${prompt}` }
       ]
     },
@@ -195,7 +261,6 @@ export const analyzeVideo = async (base64Video: string, mimeType: string, prompt
 export const quickExplain = async (text: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
-    // Use gemini-flash-lite-latest
     model: 'gemini-flash-lite-latest',
     contents: `Explain segment: "${text}".`,
     config: { systemInstruction: "Be brief but academic." }
@@ -206,7 +271,6 @@ export const quickExplain = async (text: string): Promise<string> => {
 export const translateText = async (text: string, targetLang: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
-    // Use gemini-flash-lite-latest
     model: 'gemini-flash-lite-latest',
     contents: `Translate to ${targetLang}: ${text}`,
   });
@@ -224,10 +288,9 @@ export const connectLiveSession = (callbacks: {
 }) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   return ai.live.connect({
-    model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+    model: 'gemini-2.5-flash-native-audio-preview-12-2025',
     callbacks,
     config: {
-      // Fix typo in responseModalities
       responseModalities: [Modality.AUDIO],
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
       systemInstruction: 'You are a helpful Tibetan scholar assistant. Keep responses natural and conversational.',

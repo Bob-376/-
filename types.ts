@@ -6,17 +6,10 @@ export interface GroundingChunk {
   };
 }
 
-export interface Hotspot {
-  x: number;
-  y: number;
-  label: string;
-}
-
 export interface MediaItem {
   type: 'image' | 'video';
   data: string;
   mimeType: string;
-  hotspots?: Hotspot[];
 }
 
 export interface Message {
