@@ -83,7 +83,7 @@ const App: React.FC = () => {
   const [wsPos, setWsPos] = useState({ x: (window.innerWidth - 900) / 2, y: 120 });
   const [wsSize, setWsSize] = useState({ width: Math.min(900, window.innerWidth - 60), height: 500 });
   const [dragging, setDragging] = useState<{ startX: number, startY: number, initialX: number, initialY: number } | null>(null);
-  const [resizing, setResizing] = useState<{ startX: number, startY: number, initialW: number, initialH: number } | null>(null);
+  const [resizing, setResizing] = useState<{ startX: number, startY: number, initialW: number, initialY: number } | null>(null);
 
   const editorRef = useRef<HTMLDivElement>(null);
   const quickInputRef = useRef<HTMLTextAreaElement>(null);
@@ -314,6 +314,20 @@ const App: React.FC = () => {
     } catch (e) { console.error(e); }
     setIsLoading(false);
   };
+  
+  const handleAddHotspot = (msgId: string, mediaIdx: number, hotspot: {x: number, y: number, label: string}) => {
+    setMessages(prev => prev.map(msg => {
+      if (msg.id !== msgId) return msg;
+      if (!msg.mediaItems || !msg.mediaItems[mediaIdx]) return msg;
+      
+      const newMedia = [...msg.mediaItems];
+      const item = { ...newMedia[mediaIdx] };
+      item.hotspots = [...(item.hotspots || []), hotspot];
+      newMedia[mediaIdx] = item;
+      
+      return { ...msg, mediaItems: newMedia };
+    }));
+  };
 
   const handleExport = () => {
     if (messages.length === 0) return;
@@ -357,6 +371,7 @@ const App: React.FC = () => {
               onOCR={handleImageOCR}
               onAnimate={handleAnimateImage}
               onEdit={handleEditImage}
+              onAddHotspot={handleAddHotspot}
             />
           ))}
           <div ref={messagesEndRef} />
