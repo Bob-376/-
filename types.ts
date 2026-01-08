@@ -7,7 +7,7 @@ export interface GroundingChunk {
 }
 
 export interface MediaItem {
-  type: 'image' | 'video';
+  type: 'image' | 'video' | 'audio';
   data: string;
   mimeType: string;
 }

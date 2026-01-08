@@ -5,7 +5,7 @@ import {
   Mic, Video, Upload, FileVideo, Radio, Globe, Type, Filter, Image as ImageIcon,
   Camera, Zap, AlertCircle, RefreshCw, FileText, BookOpen, Quote, ZoomIn, ZoomOut, Layers,
   Type as TypeIcon, Palette, Move, Save, ChevronRight, LayoutPanelTop, SendHorizonal, ArrowUpRight,
-  FileSearch, SearchCode, Type as FontSizeIcon, Wand2, Film, Brain, Volume2, MicOff
+  FileSearch, SearchCode, Type as FontSizeIcon, Wand2, Film, Brain, Volume2, MicOff, FileAudio
 } from 'lucide-react';
 import Header from './components/Header';
 import ChatMessage from './components/ChatMessage';
@@ -66,9 +66,10 @@ const App: React.FC = () => {
   const [wsSize, setWsSize] = useState({ width: Math.min(900, window.innerWidth - 60), height: 500 });
   const [dragging, setDragging] = useState<{ startX: number, startY: number, initialX: number, initialY: number } | null>(null);
 
-  // New State for Image Uploads
+  // New State for Image/Audio Uploads
   const [pendingImages, setPendingImages] = useState<MediaItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
 
   const editorRef = useRef<HTMLDivElement>(null);
   const liveSessionRef = useRef<any>(null);
@@ -140,6 +141,31 @@ const App: React.FC = () => {
       }
       setPendingImages(prev => [...prev, ...newImages]);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleAudioSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve) => {
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.readAsDataURL(file);
+      });
+      
+      const audioItem: MediaItem = {
+          type: 'audio',
+          data: base64,
+          mimeType: file.type
+      };
+      
+      setPendingImages(prev => [...prev, audioItem]);
+      if (audioInputRef.current) audioInputRef.current.value = "";
+      
+      // Suggest transcription prompt if empty
+      if (!inputText) {
+        setInputText("Full Amdo Tibetan Transcription & Chinese Translation");
+      }
     }
   };
 
@@ -269,8 +295,9 @@ const App: React.FC = () => {
     <div className="flex flex-col h-screen bg-himalaya-cream font-tibetan overflow-hidden relative">
       <Header onReset={() => setMessages([])} onResetLayout={() => setIsDocked(true)} onToggleMemory={() => {}} onToggleAutoScroll={() => setAutoScrollEnabled(!autoScrollEnabled)} onToggleInput={toggleWorkshop} onExport={() => {}} autoScrollEnabled={autoScrollEnabled} isInputVisible={isInputVisible} totalCharacters={totalWordsCountSum} totalTshegs={0} epicGoal={EPIC_GOAL_WORDS} />
       
-      {/* Hidden File Input */}
+      {/* Hidden File Inputs */}
       <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept="image/*" multiple className="hidden" />
+      <input type="file" ref={audioInputRef} onChange={handleAudioSelect} accept="audio/*" className="hidden" />
 
       <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
         <div className="max-w-4xl mx-auto space-y-10 pb-[250px]">
@@ -289,21 +316,29 @@ const App: React.FC = () => {
               <div className="flex gap-2 overflow-x-auto pb-2 px-2 custom-scrollbar items-end">
                 {pendingImages.map((img, idx) => (
                   <div key={idx} className="relative w-20 h-20 shrink-0 group">
-                    <img src={img.data} alt="Preview" className="w-full h-full object-cover rounded-xl border-2 border-himalaya-gold shadow-lg" />
+                    {img.type === 'image' && <img src={img.data} alt="Preview" className="w-full h-full object-cover rounded-xl border-2 border-himalaya-gold shadow-lg" />}
+                    {img.type === 'video' && <video src={img.data} className="w-full h-full object-cover rounded-xl border-2 border-himalaya-gold shadow-lg" />}
+                    {img.type === 'audio' && (
+                        <div className="w-full h-full flex items-center justify-center bg-gray-100 rounded-xl border-2 border-himalaya-gold shadow-lg">
+                            <Volume2 className="text-himalaya-red" />
+                        </div>
+                    )}
                     <button onClick={() => removePendingImage(idx)} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 shadow-md hover:scale-110 transition-transform">
                       <X size={10} />
                     </button>
                   </div>
                 ))}
-                <div className="mb-2 ml-2">
-                   <button 
-                     onClick={() => setOcrMode(!ocrMode)}
-                     className={`flex items-center gap-2 px-4 py-2 rounded-full border shadow-md transition-all ${ocrMode ? 'bg-himalaya-gold text-himalaya-red border-himalaya-red font-bold' : 'bg-white text-gray-500 border-gray-200'}`}
-                   >
-                     <SearchCode size={16} />
-                     <span className="text-xs uppercase tracking-wider">{ocrMode ? 'OCR Active' : 'Text OCR'}</span>
-                   </button>
-                </div>
+                {pendingImages.some(img => img.type === 'image') && (
+                    <div className="mb-2 ml-2">
+                    <button 
+                        onClick={() => setOcrMode(!ocrMode)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-full border shadow-md transition-all ${ocrMode ? 'bg-himalaya-gold text-himalaya-red border-himalaya-red font-bold' : 'bg-white text-gray-500 border-gray-200'}`}
+                    >
+                        <SearchCode size={16} />
+                        <span className="text-xs uppercase tracking-wider">{ocrMode ? 'OCR Active' : 'Text OCR'}</span>
+                    </button>
+                    </div>
+                )}
               </div>
             </div>
           )}
@@ -311,6 +346,7 @@ const App: React.FC = () => {
           <div className="bg-white/80 backdrop-blur-xl border-2 border-himalaya-gold shadow-2xl rounded-[2rem] p-2 flex items-center gap-2">
              <button onClick={toggleLiveSession} className={`w-10 h-10 rounded-full flex items-center justify-center ${isLiveActive ? 'bg-green-600 text-white' : 'text-gray-400'}`}><Radio size={20} /></button>
              <button onClick={() => fileInputRef.current?.click()} className="w-10 h-10 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-himalaya-red transition-colors" title="Upload Image"><ImageIcon size={20} /></button>
+             <button onClick={() => audioInputRef.current?.click()} className="w-10 h-10 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-himalaya-red transition-colors" title="Upload Audio"><FileAudio size={20} /></button>
              <textarea value={inputText} onChange={e => setInputText(e.target.value)} placeholder={ocrMode ? "Instructions (optional)..." : "Write manuscript..."} className="flex-1 bg-transparent border-none outline-none font-tibetan py-2.5 px-3 resize-none max-h-32 text-lg" rows={1} />
              <button onClick={() => setThinkingMode(!thinkingMode)} className={`p-2 rounded-lg ${thinkingMode ? 'text-purple-600' : 'text-gray-300'}`}><Brain size={18} /></button>
              <button onClick={() => handleSend()} disabled={isLoading} className="w-12 h-12 bg-himalaya-red text-himalaya-gold rounded-[1.25rem] flex items-center justify-center shadow-lg active:scale-95 disabled:opacity-50">{isLoading ? <Loader2 size={20} className="animate-spin" /> : <SendHorizonal size={22} />}</button>
@@ -335,7 +371,13 @@ const App: React.FC = () => {
                <div className="px-8 py-2 flex gap-3 overflow-x-auto border-t border-gray-100 bg-gray-50 items-center">
                 {pendingImages.map((img, idx) => (
                   <div key={idx} className="relative w-16 h-16 shrink-0 group">
-                    <img src={img.data} alt="Preview" className="w-full h-full object-cover rounded-lg border shadow-sm" />
+                    {img.type === 'image' && <img src={img.data} alt="Preview" className="w-full h-full object-cover rounded-lg border shadow-sm" />}
+                    {img.type === 'video' && <video src={img.data} className="w-full h-full object-cover rounded-lg border shadow-sm" />}
+                    {img.type === 'audio' && (
+                        <div className="w-full h-full flex items-center justify-center bg-gray-100 rounded-lg border shadow-sm">
+                            <Volume2 className="text-himalaya-red" size={24} />
+                        </div>
+                    )}
                     <button onClick={() => removePendingImage(idx)} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-0.5 shadow hover:scale-110">
                       <X size={10} />
                     </button>
@@ -352,9 +394,14 @@ const App: React.FC = () => {
             )}
 
             <div className="h-20 border-t flex items-center justify-between px-8 bg-white">
-              <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 text-gray-400 hover:text-himalaya-red font-bold text-xs uppercase tracking-widest">
-                <ImageIcon size={16} /> Add Visual Artifacts
-              </button>
+              <div className="flex items-center gap-4">
+                  <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 text-gray-400 hover:text-himalaya-red font-bold text-xs uppercase tracking-widest">
+                    <ImageIcon size={16} /> Add Visual
+                  </button>
+                  <button onClick={() => audioInputRef.current?.click()} className="flex items-center gap-2 text-gray-400 hover:text-himalaya-red font-bold text-xs uppercase tracking-widest">
+                    <FileAudio size={16} /> Add Audio
+                  </button>
+              </div>
               <button onClick={() => handleSend()} disabled={isLoading} className="flex items-center gap-2.5 px-8 py-2.5 rounded-xl font-black bg-himalaya-red text-himalaya-gold shadow-lg disabled:opacity-50">{isLoading ? <Loader2 className="animate-spin" size={18} /> : <Compass size={18} />}<span className="text-[10px] uppercase tracking-widest">Synthesize Knowledge</span></button>
             </div>
           </div>

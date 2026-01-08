@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Message, MediaItem } from '../types';
 import { 
@@ -320,8 +319,17 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, onDelete,
                          </div>
                        )}
                      </div>
-                   ) : (
+                   ) : item.type === 'video' ? (
                      <video src={item.data} controls className="w-full h-auto rounded-lg shadow-inner bg-black" />
+                   ) : (
+                     <div className="w-full bg-gray-50 p-6 rounded-xl flex items-center justify-center gap-4 border border-himalaya-gold/20 shadow-inner">
+                        <div className="w-12 h-12 bg-himalaya-red text-himalaya-gold rounded-full flex items-center justify-center shrink-0 shadow-lg">
+                           <Volume2 size={24} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                           <audio controls src={item.data} className="w-full h-10" />
+                        </div>
+                     </div>
                    )}
                 </div>
               ))}

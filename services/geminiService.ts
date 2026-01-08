@@ -58,16 +58,22 @@ export const sendMessageToSession = async (
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   // Check for OCR intent
-  const isOCRRequest = options.images && options.images.length > 0 && isOCR(text);
+  const isOCRRequest = options.images && options.images.some(i => i.type === 'image') && isOCR(text);
 
   // Model selection based on requirements
   let model = 'gemini-flash-lite-latest'; 
   if (options.useSearch) model = 'gemini-3-flash-preview';
   if (options.thinkingMode) model = 'gemini-3-pro-preview';
   
-  // Use gemini-3-flash-preview for OCR as it follows instructions better than 2.5-flash-image
   if (options.images && options.images.length > 0) {
-    model = isOCRRequest ? 'gemini-3-flash-preview' : 'gemini-2.5-flash-image';
+    const hasAudio = options.images.some(i => i.type === 'audio');
+    if (hasAudio) {
+      // Audio processing requires a multimodal model like gemini-3-flash
+      model = 'gemini-3-flash-preview';
+    } else {
+      // Use gemini-3-flash-preview for OCR as it follows instructions better than 2.5-flash-image
+      model = isOCRRequest ? 'gemini-3-flash-preview' : 'gemini-2.5-flash-image';
+    }
   }
 
   const config: any = {
@@ -95,10 +101,28 @@ export const sendMessageToSession = async (
     let messageInput: string | any[] = text;
     
     if (options.images && options.images.length > 0) {
-      // For OCR, we enforce a strict prompt override to ensure the model behaves
-      const promptText = isOCRRequest 
-        ? `STRICT OCR TASK: Transcribe all text from this image exactly. Do not explain. Do not translate. \n\nUser Context: ${text}` 
-        : (text || "Analyze this image.");
+      const hasAudio = options.images.some(i => i.type === 'audio');
+      let promptText = text;
+
+      if (isOCRRequest) {
+        promptText = `STRICT OCR TASK: Transcribe all text from this image exactly. Do not explain. Do not translate. \n\nUser Context: ${text}`;
+      } else if (hasAudio) {
+        promptText = `AUDIO TASK (AMDO DIALECT):
+1. **FULL VERBATIM TRANSCRIPTION**: Listen to the ENTIRE audio file from beginning to end. This is likely Amdo Tibetan dialect. Transcribe the spoken content STRICTLY word-for-word into standard Tibetan script (Bod Yig).
+   - CRITICAL: DO NOT SUMMARIZE.
+   - CRITICAL: Ensure NO part of the audio is omitted.
+2. **TRANSLATION**: Translate the full Tibetan transcription into clear and accurate Chinese (Hanzi).
+
+Format:
+[Tibetan Transcription]
+<text>
+[Chinese Translation]
+<text>
+
+${text ? `User Note: ${text}` : ''}`;
+      } else if (!text) {
+        promptText = "Analyze this content.";
+      }
 
       messageInput = [
         ...options.images.map(img => ({
