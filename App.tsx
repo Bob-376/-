@@ -156,7 +156,8 @@ const App: React.FC = () => {
       const audioItem: MediaItem = {
           type: 'audio',
           data: base64,
-          mimeType: file.type
+          // IMPORTANT: Fallback to audio/mp3 if mimeType is missing (common with some file types in certain browsers)
+          mimeType: file.type || 'audio/mp3' 
       };
       
       setPendingImages(prev => [...prev, audioItem]);
@@ -164,7 +165,7 @@ const App: React.FC = () => {
       
       // Suggest transcription prompt if empty
       if (!inputText) {
-        setInputText("Full Amdo Tibetan Transcription & Chinese Translation");
+        setInputText("Full 2-Hour Amdo Tibetan Transcription");
       }
     }
   };

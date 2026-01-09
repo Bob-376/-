@@ -68,8 +68,10 @@ export const sendMessageToSession = async (
   if (options.images && options.images.length > 0) {
     const hasAudio = options.images.some(i => i.type === 'audio');
     if (hasAudio) {
-      // Audio processing requires a multimodal model like gemini-3-flash
-      model = 'gemini-3-flash-preview';
+      // UPGRADE: Use Gemini 3 Pro for Audio. 
+      // Pro model has significantly better dialect (Amdo/Khams) understanding and reasoning than Flash.
+      // This helps prevent "empty output" issues with difficult audio.
+      model = 'gemini-3-pro-preview';
     } else {
       // Use gemini-3-flash-preview for OCR as it follows instructions better than 2.5-flash-image
       model = isOCRRequest ? 'gemini-3-flash-preview' : 'gemini-2.5-flash-image';
@@ -83,9 +85,8 @@ export const sendMessageToSession = async (
 
   if (options.thinkingMode) {
     config.thinkingConfig = { thinkingBudget: 32768 };
-  } else {
-    config.maxOutputTokens = 8192;
-  }
+  } 
+  // REMOVED explicit maxOutputTokens limit for non-thinking mode to allow model defaults (which may be higher) for long audio tasks.
 
   if (options.useSearch && !options.images && !isOCRRequest) {
     config.tools = [{ googleSearch: {} }];
@@ -107,19 +108,24 @@ export const sendMessageToSession = async (
       if (isOCRRequest) {
         promptText = `STRICT OCR TASK: Transcribe all text from this image exactly. Do not explain. Do not translate. \n\nUser Context: ${text}`;
       } else if (hasAudio) {
-        promptText = `AUDIO TASK (AMDO DIALECT):
-1. **FULL VERBATIM TRANSCRIPTION**: Listen to the ENTIRE audio file from beginning to end. This is likely Amdo Tibetan dialect. Transcribe the spoken content STRICTLY word-for-word into standard Tibetan script (Bod Yig).
-   - CRITICAL: DO NOT SUMMARIZE.
-   - CRITICAL: Ensure NO part of the audio is omitted.
-2. **TRANSLATION**: Translate the full Tibetan transcription into clear and accurate Chinese (Hanzi).
+        promptText = `AUDIO RECOGNITION TASK (AMDO DIALECT) - PRIORITY LEVEL: CRITICAL
+1. **DIALECT AWARENESS**: This is Amdo Tibetan. It may sound distinct from standard Lhasa Tibetan.
+2. **FORCE TRANSCRIPTION**: You MUST transcribe the audio content into standard Tibetan Script (Bod Yig).
+   - If the audio is unclear, use your best phonetic approximation in Tibetan.
+   - **DO NOT** output empty text. 
+   - **DO NOT** say "I cannot hear" or "Audio is silent" unless it is absolute digital silence.
+   - **DO NOT** summarize. We need a verbatim transcript.
+3. **SCOPE**: Process from 00:00 to the very end (up to 2 hours).
+4. **TRANSLATION**: Provide a Chinese translation after the transcription.
 
 Format:
 [Tibetan Transcription]
-<text>
-[Chinese Translation]
-<text>
+<Write the Tibetan text here. If you hear speech, write it down!>
 
-${text ? `User Note: ${text}` : ''}`;
+[Chinese Translation]
+<Write the translation here>
+
+${text ? `User Context/Hint: ${text}` : ''}`;
       } else if (!text) {
         promptText = "Analyze this content.";
       }
@@ -128,7 +134,7 @@ ${text ? `User Note: ${text}` : ''}`;
         ...options.images.map(img => ({
           inlineData: {
             data: cleanBase64(img.data),
-            mimeType: img.mimeType
+            mimeType: img.mimeType || 'audio/mp3' // Fallback for safety
           }
         })),
         { text: promptText }
